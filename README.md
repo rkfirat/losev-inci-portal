@@ -125,10 +125,11 @@ npm run tunnel
 
 Çıktıdaki URL (örn. `https://losev-backend-2026.loca.lt`) backend’in dışarı açılmış adresidir. Mobil uygulama varsayılan olarak `https://losev-backend-2026.loca.lt/api/v1` kullandığı için **EXPO_PUBLIC_API_BASE_URL vermeniz gerekmez**; subdomain aynı kaldığı sürece çalışır. Farklı subdomain kullanırsanız: `LT_SUBDOMAIN=xxx npm run tunnel` ve mobilde `EXPO_PUBLIC_API_BASE_URL=https://xxx.loca.lt/api/v1` verin.
 
-**4. Mobil uygulamayı tunnel ile başlat**
+**4. Mobil uygulamayı başlat (Tunnel / Local)**
 
 ```bash
 cd mobile
+nvm use 20      # Node 20 kullanmak zorunludur!
 npm install
 npm run start:tunnel
 ```
