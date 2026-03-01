@@ -8,21 +8,21 @@ export const listEvents = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getEventDetail = asyncHandler(async (req: Request, res: Response) => {
-    const event = await eventService.getEventDetail(req.params.id, req.user!.id);
+    const event = await eventService.getEventDetail(req.params.id as string, req.user!.userId);
     res.json({ status: 'success', data: event });
 });
 
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
-    const event = await eventService.createEvent(req.user!.id, req.body);
+    const event = await eventService.createEvent(req.user!.userId, req.body);
     res.status(201).json({ status: 'success', data: event });
 });
 
 export const participateEvent = asyncHandler(async (req: Request, res: Response) => {
-    const result = await eventService.participateEvent(req.params.id, req.user!.id);
+    const result = await eventService.participateEvent(req.params.id as string, req.user!.userId);
     res.json({ status: 'success', data: result });
 });
 
 export const cancelParticipation = asyncHandler(async (req: Request, res: Response) => {
-    const result = await eventService.cancelParticipation(req.params.id, req.user!.id);
+    const result = await eventService.cancelParticipation(req.params.id as string, req.user!.userId);
     res.json({ status: 'success', data: result });
 });
