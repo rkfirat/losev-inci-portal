@@ -45,7 +45,7 @@ class AdminController {
     }
     async createEvent(req, res) {
         try {
-            const creatorId = req.user.id;
+            const creatorId = req.user.sub;
             const event = await admin_service_1.AdminService.createEvent(req.body, creatorId);
             res.status(201).json({ success: true, data: event });
         }
@@ -123,7 +123,7 @@ class AdminController {
     }
     async sendAnnouncement(req, res) {
         try {
-            const creatorId = req.user.id;
+            const creatorId = req.user.sub;
             const result = await admin_service_1.AdminService.createAnnouncement(req.body, creatorId);
             res.json({ success: true, data: result });
         }

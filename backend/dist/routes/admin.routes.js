@@ -16,8 +16,8 @@ router.get('/volunteers', admin_controller_1.default.getVolunteers);
 router.patch('/volunteers/:id/toggle-status', admin_controller_1.default.toggleStatus);
 router.delete('/volunteers/:id', admin_controller_1.default.deleteUser);
 // Event Management
-router.post('/events', admin_controller_1.default.createEvent);
-router.patch('/events/:id', admin_controller_1.default.updateEvent);
+router.post('/events', (0, validate_middleware_1.validate)(validations_1.createEventSchema), admin_controller_1.default.createEvent);
+router.patch('/events/:id', (0, validate_middleware_1.validate)(validations_1.updateEventSchema), admin_controller_1.default.updateEvent);
 router.delete('/events/:id', admin_controller_1.default.deleteEvent);
 // Reports & Announcements
 router.get('/reports/volunteers', admin_controller_1.default.getReport);

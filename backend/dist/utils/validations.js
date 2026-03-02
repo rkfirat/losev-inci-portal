@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updatePushTokenSchema = exports.sendAnnouncementSchema = exports.eventIdParamSchema = exports.updateVolunteerHourStatusSchema = exports.logVolunteerHourSchema = exports.refreshSchema = exports.loginSchema = exports.registerSchema = void 0;
+exports.updateEventSchema = exports.createEventSchema = exports.updatePushTokenSchema = exports.sendAnnouncementSchema = exports.eventIdParamSchema = exports.updateVolunteerHourStatusSchema = exports.logVolunteerHourSchema = exports.refreshSchema = exports.loginSchema = exports.registerSchema = void 0;
 const zod_1 = require("zod");
 exports.registerSchema = zod_1.z.object({
     body: zod_1.z.object({
@@ -58,5 +58,31 @@ exports.sendAnnouncementSchema = zod_1.z.object({
 exports.updatePushTokenSchema = zod_1.z.object({
     body: zod_1.z.object({
         pushToken: zod_1.z.string().min(1, 'Push token is required'),
+    }),
+});
+exports.createEventSchema = zod_1.z.object({
+    body: zod_1.z.object({
+        title: zod_1.z.string().min(1, 'Title is required').max(200),
+        description: zod_1.z.string().max(2000).optional(),
+        location: zod_1.z.string().max(500).optional(),
+        startDate: zod_1.z.string().datetime(),
+        endDate: zod_1.z.string().datetime(),
+        capacity: zod_1.z.number().int().positive().optional(),
+        imageUrl: zod_1.z.string().url().optional().or(zod_1.z.literal('')),
+    }),
+});
+exports.updateEventSchema = zod_1.z.object({
+    params: zod_1.z.object({
+        id: zod_1.z.string().uuid('Invalid event ID'),
+    }),
+    body: zod_1.z.object({
+        title: zod_1.z.string().min(1).max(200).optional(),
+        description: zod_1.z.string().max(2000).optional(),
+        location: zod_1.z.string().max(500).optional(),
+        startDate: zod_1.z.string().datetime().optional(),
+        endDate: zod_1.z.string().datetime().optional(),
+        capacity: zod_1.z.number().int().positive().optional(),
+        imageUrl: zod_1.z.string().url().optional().or(zod_1.z.literal('')),
+        isActive: zod_1.z.boolean().optional(),
     }),
 });

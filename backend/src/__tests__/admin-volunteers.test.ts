@@ -4,18 +4,16 @@ import { UserRole } from '@prisma/client';
 import apiRoutes from '../routes';
 import { errorHandler } from '../middlewares/validate.middleware';
 import { prismaMock } from './setup';
-import jwt from 'jsonwebtoken';
+import { generateAccessToken } from '../utils/jwt';
 
 const app = express();
 app.use(express.json());
 app.use('/api/v1', apiRoutes);
 app.use(errorHandler);
 
-const secret = process.env.JWT_SECRET || 'secret';
-
 describe('Admin Volunteer Management (US-080)', () => {
-  const adminToken = jwt.sign({ id: 'admin-1', role: UserRole.ADMIN }, secret);
-  const volunteerToken = jwt.sign({ id: 'vol-1', role: UserRole.VOLUNTEER }, secret);
+  const adminToken = generateAccessToken({ sub: 'admin-1', email: 'admin@test.com', role: UserRole.ADMIN });
+  const volunteerToken = generateAccessToken({ sub: 'vol-1', email: 'vol@test.com', role: UserRole.VOLUNTEER });
 
   const mockVolunteers = [
     {

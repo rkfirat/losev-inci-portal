@@ -7,9 +7,11 @@ const express_1 = require("express");
 const coordinator_controller_1 = __importDefault(require("../controllers/coordinator.controller"));
 const auth_middleware_1 = require("../middlewares/auth.middleware");
 const role_middleware_1 = require("../middlewares/role.middleware");
+const validate_middleware_1 = require("../middlewares/validate.middleware");
+const validations_1 = require("../utils/validations");
 const router = (0, express_1.Router)();
 // Only coordinators and admins can access these
 router.use(auth_middleware_1.authenticate, role_middleware_1.isCoordinator);
 router.get('/hours/pending', coordinator_controller_1.default.getPendingHours);
-router.patch('/hours/:id/status', coordinator_controller_1.default.updateHourStatus);
+router.patch('/hours/:id/status', (0, validate_middleware_1.validate)(validations_1.updateVolunteerHourStatusSchema), coordinator_controller_1.default.updateHourStatus);
 exports.default = router;

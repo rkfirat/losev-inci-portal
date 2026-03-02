@@ -4,17 +4,15 @@ import { UserRole } from '@prisma/client';
 import apiRoutes from '../routes';
 import { errorHandler } from '../middlewares/validate.middleware';
 import { prismaMock } from './setup';
-import jwt from 'jsonwebtoken';
+import { generateAccessToken } from '../utils/jwt';
 
 const app = express();
 app.use(express.json());
 app.use('/api/v1', apiRoutes);
 app.use(errorHandler);
 
-const secret = process.env.JWT_SECRET || 'secret';
-
 describe('Admin Event Management (US-081)', () => {
-  const adminToken = jwt.sign({ id: 'admin-1', role: UserRole.ADMIN }, secret);
+  const adminToken = generateAccessToken({ sub: 'admin-1', email: 'admin@test.com', role: UserRole.ADMIN });
   const eventId = '550e8400-e29b-41d4-a716-446655440000';
 
   const mockEvent = {

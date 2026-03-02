@@ -10,7 +10,7 @@ import apiRoutes from '../routes';
 import { errorHandler } from '../middlewares/validate.middleware';
 import { prismaMock } from './setup';
 import { UserRole, HourStatus } from '@prisma/client';
-import jwt from 'jsonwebtoken';
+import { generateAccessToken } from '../utils/jwt';
 
 const app = express();
 app.use(express.json());
@@ -21,10 +21,8 @@ app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 app.use('/api/v1', apiRoutes);
 app.use(errorHandler);
 
-const secret = process.env.JWT_SECRET || 'secret';
-
 const generateToken = (id: string, role: UserRole) => {
-  return jwt.sign({ id, role }, secret);
+  return generateAccessToken({ sub: id, email: 'test@test.com', role });
 };
 
 describe('Deep Regression & QA Testing', () => {

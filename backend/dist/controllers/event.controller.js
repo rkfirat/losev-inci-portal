@@ -32,7 +32,7 @@ class EventController {
     async participate(req, res) {
         try {
             const id = req.params.id;
-            const userId = req.user.id;
+            const userId = req.user.sub;
             const participation = await event_service_1.default.participate(id, userId);
             res.json({ success: true, data: participation });
         }
@@ -49,7 +49,7 @@ class EventController {
     async cancelParticipation(req, res) {
         try {
             const id = req.params.id;
-            const userId = req.user.id;
+            const userId = req.user.sub;
             const participation = await event_service_1.default.cancelParticipation(id, userId);
             res.json({ success: true, data: participation });
         }

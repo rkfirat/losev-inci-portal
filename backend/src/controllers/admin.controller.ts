@@ -42,7 +42,7 @@ export class AdminController {
 
   async createEvent(req: Request, res: Response) {
     try {
-      const creatorId = (req as any).user.id as string;
+      const creatorId = (req as any).user.sub as string;
       const event = await AdminService.createEvent(req.body, creatorId);
       res.status(201).json({ success: true, data: event });
     } catch (error: any) {
@@ -123,7 +123,7 @@ export class AdminController {
 
   async sendAnnouncement(req: Request, res: Response) {
     try {
-      const creatorId = (req as any).user.id as string;
+      const creatorId = (req as any).user.sub as string;
       const result = await AdminService.createAnnouncement(req.body, creatorId);
       res.json({ success: true, data: result });
     } catch (error: any) {
