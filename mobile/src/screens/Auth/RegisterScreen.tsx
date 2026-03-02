@@ -1,365 +1,255 @@
-import React, { memo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { typography } from '../../theme/typography';
-import { spacing } from '../../theme/spacing';
-import { Input } from '../../components/Input';
-import { Button } from '../../components/Button';
-import { authService } from '../../services/auth';
-import { getApiErrorMessage } from '../../utils/error';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { AuthStackParamList } from '../../navigation/types';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { AuthService } from '../../services/auth.service';
 
-interface RegisterForm {
-  firstName: string;
-  lastName: string;
-  email: string;
-  school: string;
-  city: string;
-  district: string;
-  grade: string;
-  coordinatorName: string;
-  password: string;
-  confirmPassword: string;
-}
+const registerSchema = z.object({
+  firstName: z.string().min(2, 'Ad en az 2 karakter olmalıdır'),
+  lastName: z.string().min(2, 'Soyad en az 2 karakter olmalıdır'),
+  email: z.string().email('Geçerli bir E-posta giriniz'),
+  password: z
+    .string()
+    .min(8, 'Şifre en az 8 karakter olmalıdır')
+    .regex(/[A-Z]/, 'En az bir büyük harf içermelidir')
+    .regex(/[0-9]/, 'En az bir rakam içermelidir'),
+});
 
-interface Props {
-  navigation: NativeStackNavigationProp<AuthStackParamList, 'Register'>;
-}
+type RegisterFormData = z.infer<typeof registerSchema>;
 
-export const RegisterScreen = memo(function RegisterScreen({ navigation }: Props) {
-  const colors = useThemeColors();
+export const RegisterScreen = ({ navigation }: any) => {
+  const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const {
-    control,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<RegisterForm>({
-    defaultValues: { firstName: '', lastName: '', email: '', school: '', city: '', district: '', grade: '', coordinatorName: '', password: '', confirmPassword: '' },
+  const { control, handleSubmit, formState: { errors } } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
   });
 
-  const password = watch('password');
-
-  const onSubmit = async (form: RegisterForm) => {
+  const onSubmit = async (data: RegisterFormData) => {
+    setErrorMsg('');
     setLoading(true);
     try {
-      await authService.register({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        password: form.password,
-        ...(form.school ? { school: form.school } : {}),
-        ...(form.city ? { city: form.city } : {}),
-        ...(form.district ? { district: form.district } : {}),
-        ...(form.grade ? { grade: form.grade } : {}),
-        ...(form.coordinatorName ? { coordinatorName: form.coordinatorName } : {}),
-      });
-    } catch (error: unknown) {
-      Alert.alert('Hata', getApiErrorMessage(error, 'Kayıt başarısız. Lütfen tekrar deneyin.'));
+      const res = await AuthService.register(data);
+      if (!res.success) {
+        setErrorMsg(res.error?.message || 'Kayıt Başarısız');
+      }
+    } catch (error: any) {
+      if (error.response?.data?.error?.message) {
+        setErrorMsg(error.response.data.error.message);
+      } else {
+        setErrorMsg('Bir hata oluştu. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
     >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.header}>
-          <Text style={[typography.h2, { color: colors.text }]}>Hesap Oluştur</Text>
-          <Text style={[typography.body1, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-            LÖSEV İnci Portalı'na katıl ve gönüllülük yolculuğuna başla.
-          </Text>
-        </View>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.formContainer}>
+          <Text style={styles.headerTitle}>Kayıt Ol</Text>
+          <Text style={styles.subTitle}>LÖSEV İnci Portalı'na katılın.</Text>
 
-        <View style={styles.form}>
-          <View style={styles.nameRow}>
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="firstName"
-                rules={{ required: 'Gerekli', maxLength: { value: 50, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Ad"
-                    placeholder="Elif"
-                    icon="person-outline"
-                    autoComplete="given-name"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.firstName?.message}
-                    testID="register-first-name"
-                  />
-                )}
-              />
+          {errorMsg !== '' && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorBoxText}>{errorMsg}</Text>
             </View>
-            <View style={styles.nameSpacer} />
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="lastName"
-                rules={{ required: 'Gerekli', maxLength: { value: 50, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Soyad"
+          )}
+
+          <View style={styles.row}>
+            <Controller
+              control={control}
+              name="firstName"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
+                  <Text style={styles.label}>Ad</Text>
+                  <TextInput
+                    style={[styles.input, errors.firstName && styles.inputError]}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
+                    placeholder="Ahmet"
+                  />
+                  {errors.firstName && <Text style={styles.errorText}>{errors.firstName.message}</Text>}
+                </View>
+              )}
+            />
+            <Controller
+              control={control}
+              name="lastName"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.label}>Soyad</Text>
+                  <TextInput
+                    style={[styles.input, errors.lastName && styles.inputError]}
+                    onBlur={onBlur}
+                    onChangeText={onChange}
+                    value={value}
                     placeholder="Yılmaz"
-                    autoComplete="family-name"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.lastName?.message}
-                    testID="register-last-name"
                   />
-                )}
-              />
-            </View>
+                  {errors.lastName && <Text style={styles.errorText}>{errors.lastName.message}</Text>}
+                </View>
+              )}
+            />
           </View>
 
           <Controller
             control={control}
             name="email"
-            rules={{
-              required: 'Email gerekli',
-              pattern: {
-                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                message: 'Geçersiz email formatı',
-              },
-            }}
             render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Email"
-                placeholder="email@ornek.com"
-                icon="mail-outline"
-                keyboardType="email-address"
-                autoComplete="email"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.email?.message}
-                testID="register-email"
-              />
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>E-Posta</Text>
+                <TextInput
+                  style={[styles.input, errors.email && styles.inputError]}
+                  onBlur={onBlur}
+                  onChangeText={onChange}
+                  value={value}
+                  placeholder="ornek@posta.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {errors.email && <Text style={styles.errorText}>{errors.email.message}</Text>}
+              </View>
             )}
           />
-
-          <Controller
-            control={control}
-            name="school"
-            rules={{ maxLength: { value: 100, message: 'Çok uzun' } }}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Okul (opsiyonel)"
-                placeholder="42 İstanbul"
-                icon="school-outline"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.school?.message}
-                testID="register-school"
-              />
-            )}
-          />
-
-          <View style={styles.nameRow}>
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="city"
-                rules={{ maxLength: { value: 100, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="İl (opsiyonel)"
-                    placeholder="İstanbul"
-                    icon="location-outline"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.city?.message}
-                    testID="register-city"
-                  />
-                )}
-              />
-            </View>
-            <View style={styles.nameSpacer} />
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="district"
-                rules={{ maxLength: { value: 100, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="İlçe (opsiyonel)"
-                    placeholder="Kadıköy"
-                    icon="location-outline"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.district?.message}
-                    testID="register-district"
-                  />
-                )}
-              />
-            </View>
-          </View>
-
-          <View style={styles.nameRow}>
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="grade"
-                rules={{ maxLength: { value: 20, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Sınıf (opsiyonel)"
-                    placeholder="10"
-                    icon="school-outline"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.grade?.message}
-                    testID="register-grade"
-                  />
-                )}
-              />
-            </View>
-            <View style={styles.nameSpacer} />
-            <View style={styles.nameField}>
-              <Controller
-                control={control}
-                name="coordinatorName"
-                rules={{ maxLength: { value: 100, message: 'Çok uzun' } }}
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Koordinatör (opsiyonel)"
-                    placeholder="Öğretmen adı"
-                    icon="person-outline"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.coordinatorName?.message}
-                    testID="register-coordinator"
-                  />
-                )}
-              />
-            </View>
-          </View>
 
           <Controller
             control={control}
             name="password"
-            rules={{
-              required: 'Şifre gerekli',
-              minLength: { value: 8, message: 'En az 8 karakter' },
-              validate: {
-                uppercase: (v) => /[A-Z]/.test(v) || 'Büyük harf içermeli',
-                lowercase: (v) => /[a-z]/.test(v) || 'Küçük harf içermeli',
-                number: (v) => /[0-9]/.test(v) || 'Rakam içermeli',
-              },
-            }}
             render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Şifre"
-                placeholder="En az 8 karakter"
-                icon="lock-closed-outline"
-                isPassword
-                autoComplete="new-password"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.password?.message}
-                testID="register-password"
-              />
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Şifre</Text>
+                <TextInput
+                  style={[styles.input, errors.password && styles.inputError]}
+                  onBlur={onBlur}
+                  onChangeText={onChange}
+                  value={value}
+                  placeholder="En az 8 karakter, 1 B. Harf, 1 Rakam"
+                  secureTextEntry
+                />
+                {errors.password && <Text style={styles.errorText}>{errors.password.message}</Text>}
+              </View>
             )}
           />
 
-          <Controller
-            control={control}
-            name="confirmPassword"
-            rules={{
-              required: 'Şifreyi tekrar girin',
-              validate: (v) => v === password || 'Şifreler eşleşmiyor',
-            }}
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Şifre Tekrar"
-                placeholder="Şifrenizi tekrar girin"
-                icon="lock-closed-outline"
-                isPassword
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.confirmPassword?.message}
-                testID="register-confirm-password"
-              />
-            )}
-          />
-
-          <Button
-            title="Kayıt Ol"
+          <TouchableOpacity 
+            style={styles.submitBtn} 
             onPress={handleSubmit(onSubmit)}
-            loading={loading}
-            testID="register-submit"
-          />
-        </View>
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Hesap Oluştur</Text>}
+          </TouchableOpacity>
 
-        <View style={styles.footer}>
-          <Text style={[typography.body2, { color: colors.textSecondary }]}>
-            Zaten hesabın var mı?{' '}
-          </Text>
-          <Button
-            title="Giriş Yap"
-            onPress={() => navigation.navigate('Login')}
-            variant="ghost"
-            testID="register-login-link"
-          />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.linkBtn}>
+            <Text style={styles.linkText}>Zaten hesabınız var mı? <Text style={styles.bold}>Giriş Yap</Text></Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
-});
+};
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  content: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing['2xl'],
-    paddingBottom: spacing.lg,
-  },
-  header: {
-    marginBottom: spacing.xl,
-  },
-  form: {
-    marginBottom: spacing.lg,
-  },
-  nameRow: {
-    flexDirection: 'row',
-  },
-  nameField: {
+  container: {
     flex: 1,
+    backgroundColor: '#FAF9F6', // Off-white
   },
-  nameSpacer: {
-    width: spacing.sm,
-  },
-  footer: {
-    flexDirection: 'row',
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
   },
+  formContainer: {
+    paddingHorizontal: 25,
+    paddingVertical: 40,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#E05A47',
+    marginBottom: 8,
+  },
+  subTitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 35,
+  },
+  row: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 5,
+    fontWeight: '600'
+  },
+  input: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: '#333'
+  },
+  inputError: {
+    borderColor: '#FF3B30',
+  },
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  submitBtn: {
+    backgroundColor: '#E05A47',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
+    shadowColor: "#E05A47",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  submitBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  linkBtn: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingBottom: 20
+  },
+  linkText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  bold: {
+    fontWeight: 'bold',
+    color: '#E05A47',
+  },
+  errorBox: {
+    backgroundColor: '#FFEBEA',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#FFC1C0',
+  },
+  errorBoxText: {
+    color: '#D8000C',
+    textAlign: 'center',
+    fontWeight: '500'
+  }
 });

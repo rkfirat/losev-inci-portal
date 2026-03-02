@@ -1,18 +1,31 @@
-import { Request, Response } from 'express';
-import { asyncHandler } from '../utils/asyncHandler';
-import * as badgeService from '../services/badge.service';
+import { Response, NextFunction } from 'express';
+import { BadgeService } from '../services/badge.service';
+import { AuthRequest } from '../middlewares/auth.middleware';
 
-export const listBadges = asyncHandler(async (req: Request, res: Response) => {
-    const badges = await badgeService.listBadges(req.user!.userId);
-    res.json({ status: 'success', data: badges });
-});
+export const getAllBadges = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const badges = await BadgeService.getAllBadges();
+    res.status(200).json({
+      success: true,
+      data: badges,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-export const getBadgeDetail = asyncHandler(async (req: Request, res: Response) => {
-    const badge = await badgeService.getBadgeDetail(req.params.id as string, req.user!.userId);
-    res.json({ status: 'success', data: badge });
-});
-
-export const getMyBadges = asyncHandler(async (req: Request, res: Response) => {
-    const badges = await badgeService.getMyBadges(req.user!.userId);
-    res.json({ status: 'success', data: badges });
-});
+export const getUserBadges = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.sub;
+    const userBadges = await BadgeService.getUserBadges(userId);
+    res.status(200).json({
+      success: true,
+      data: userBadges.map(ub => ({
+        ...ub.badge,
+        earnedAt: ub.earnedAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};

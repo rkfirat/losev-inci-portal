@@ -1,27 +1,27 @@
-# LÖSEV İnci Portalı — AI Agent Team Mobile App
+# LÖSEV İnci Portalı — AI Agent Team Mobile & Web App
 
 ## Proje Vizyonu
 
-**LÖSEV İnci Portalı**, 42 İstanbul Freelance Kulübü ve LÖSEV iş birliği kapsamında geliştirilen, 42-intra benzeri bir gönüllülük takip platformudur. Öğrencilerin gönüllülük saatlerini, rozetlerini ve etkinlik katılımlarını takip eder. Yapay zeka destekli bir yazılım geliştirme takımı tarafından yönetilen profesyonel bir mobil uygulama geliştirme sürecidir.
+**LÖSEV İnci Portalı**, 42 İstanbul Freelance Kulübü ve LÖSEV iş birliği kapsamında geliştirilen, 42-intra benzeri bir gönüllülük takip platformudur. Öğrencilerin gönüllülük saatlerini, rozetlerini ve etkinlik katılımlarını takip eder. Yapay zeka destekli bir yazılım geliştirme takımı tarafından yönetilen profesyonel bir mobil ve web uygulaması geliştirme sürecidir.
 
 ## Takım Yapısı
 
-| Ajan | Rol | Durum |
-|------|-----|-------|
-| Team Lead | Proje yönetimi, koordinasyon, kalite kontrol | Aktif |
-| Designer | UI/UX tasarım, wireframe, mockup | Aktif |
-| Frontend | Mobil arayüz geliştirme (React Native) | Aktif |
-| Backend | API ve veritabanı geliştirme (Node.js + PostgreSQL) | Aktif |
+| Ajan      | Rol                                                 | Durum |
+| --------- | --------------------------------------------------- | ----- |
+| Team Lead | Proje yönetimi, koordinasyon, kalite kontrol        | Aktif |
+| Designer  | UI/UX tasarım, wireframe, mockup                    | Aktif |
+| Frontend  | Mobil ve Web arayüz geliştirme (React Native Web)   | Aktif |
+| Backend   | API ve veritabanı geliştirme (Node.js + PostgreSQL) | Aktif |
 
 ## Temel Özellikler
 
-| Modül | Açıklama |
-|-------|----------|
-| 🕐 Gönüllülük Saatleri | Saat loglama, onay workflow'u, geçmiş takibi |
-| 🏅 Rozet Sistemi | Gamification, otomatik rozet kazanımı, vitrin |
-| 📅 Etkinlik Yönetimi | LÖSEV etkinlikleri, katılım takibi, takvim |
-| 🏆 Leaderboard | Gönüllü sıralama tablosu (haftalık/aylık/tüm zamanlar) |
-| 👤 Profil & Dashboard | Kişisel istatistikler, ilerleme göstergesi |
+| Modül                  | Açıklama                                               |
+| ---------------------- | ------------------------------------------------------ |
+| 🕐 Gönüllülük Saatleri | Saat loglama, onay workflow'u, geçmiş takibi           |
+| 🏅 Rozet Sistemi       | Gamification, otomatik rozet kazanımı, vitrin          |
+| 📅 Etkinlik Yönetimi   | LÖSEV etkinlikleri, katılım takibi, takvim             |
+| 🏆 Leaderboard         | Gönüllü sıralama tablosu (haftalık/aylık/tüm zamanlar) |
+| 👤 Profil & Dashboard  | Kişisel istatistikler, ilerleme göstergesi             |
 
 ## Klasör Yapısı
 
@@ -35,7 +35,7 @@ ai-agent-team-mobile-app/
 ├── backend/             # Node.js + Express backend kaynak kodu
 │   ├── prisma/          # Veritabanı şeması ve migration'lar
 │   └── src/             # Backend kaynak dosyaları
-├── mobile/              # React Native mobil uygulama kaynak kodu
+├── mobile/              # React Native mobil ve web uygulaması kaynak kodu
 │   └── src/             # Frontend kaynak dosyaları
 ├── context/             # Proje bağlamı ve gereksinimler
 │   ├── project-requirements.md   # Ürün gereksinimleri (LÖSEV İnci Portalı)
@@ -62,11 +62,11 @@ ai-agent-team-mobile-app/
 
 ## Kullanıcı Rolleri
 
-| Rol | Yetkiler |
-|-----|----------|
-| **Gönüllü (VOLUNTEER)** | Saat loglama, rozet görüntüleme, etkinlik katılımı |
+| Rol                           | Yetkiler                                           |
+| ----------------------------- | -------------------------------------------------- |
+| **Gönüllü (VOLUNTEER)**       | Saat loglama, rozet görüntüleme, etkinlik katılımı |
 | **Koordinatör (COORDINATOR)** | Saat onaylama, etkinlik oluşturma, raporları görme |
-| **Admin (ADMIN)** | Tüm yetkiler, rozet tanımlama, kullanıcı yönetimi |
+| **Admin (ADMIN)**             | Tüm yetkiler, rozet tanımlama, kullanıcı yönetimi  |
 
 ## Çalışma Prensibi
 
@@ -85,6 +85,34 @@ ai-agent-team-mobile-app/
 
 Uygulamayı internette erişilebilir hale getirmek için Expo tunnel ve backend için **localtunnel** kullanılır. Token veya hesap gerekmez; fiziksel cihazdan veya paylaşılan link ile erişim mümkün olur.
 
+## Production Deployment (Docker Stack)
+
+Projenin canlı ortamda (DigitalOcean, AWS, Kendi Sunucunuz vb.) çalıştırılması için tam donanımlı bir Docker stack'i hazırlanmıştır. Bu stack Nginx (Reverse Proxy), PostgreSQL (Veritabanı), Redis (Cache), Node.js (Backend) ve React Native Web (Frontend) bileşenlerini içerir.
+
+### 1. Yapılandırma
+
+Öncelikle `.env.prod.example` dosyasını `.env.prod` olarak kopyalayın ve içindeki gizli anahtarları (DB şifresi, JWT secret vb.) güncelleyin:
+
+```bash
+cp .env.prod.example .env.prod
+# .env.prod dosyasını düzenleyin
+```
+
+### 2. Başlatma
+
+Aşağıdaki komut tüm sistemi derler ve arka planda çalıştırır:
+
+```bash
+docker-compose -f docker-compose.prod.yml up -d --build
+```
+
+### 3. Otomatik İşlemler
+
+- **Veritabanı Migrasyonları:** Backend konteyneri başladığında `npx prisma migrate deploy` komutunu otomatik çalıştırır.
+- **Yedekleme:** `db-backup` servisi her gün veritabanını `./backups` klasörüne otomatik olarak yedekler.
+- **SSL:** Nginx yapılandırması port 80 ve 443'ü dinler. SSL sertifikalarınızı `./nginx/certs` klasörüne koyarak `nginx.conf` üzerinden aktif edebilirsiniz.
+
+
 ### Gereksinimler
 
 - **Node.js 20+** (Expo ve backend için; `nvm use 20` veya `.nvmrc` ile)
@@ -98,7 +126,8 @@ Uygulamayı internette erişilebilir hale getirmek için Expo tunnel ve backend 
 ```bash
 docker-compose up -d --build
 ```
-*(Bu komut PostgreSQL, Redis ve Node.js Backend API sunucusunu aynı anda çalıştırır)*
+
+_(Bu komut PostgreSQL, Redis ve Node.js Backend API sunucusunu aynı anda çalıştırır)_
 
 **2. Backend’i çalıştır**
 
@@ -168,10 +197,15 @@ npm run start:tunnel
 3. İkisini de açık tuttuktan sonra uygulamayı yeniden açın. Localtunnel bazen düşebilir; tüneli yeniden başlatıp (Ctrl+C sonra `npm run tunnel`) tekrar deneyin.
 4. Sorun sürerse farklı subdomain deneyin: `LT_SUBDOMAIN=test123 npm run tunnel` ve mobilde `EXPO_PUBLIC_API_BASE_URL=https://test123.loca.lt/api/v1` ile başlatın.
 
+## Testler
+
+- **Backend:** `cd backend && npm test` — 34 integration test. Coverage raporu: `cd backend && npm run test:coverage` (hedef: %70, `context/technical-constraints.md`).
+- **Mobil:** `cd mobile && npm test` — 4 test (smoke + breakpoints).
+
 ## Operasyon Merkezi
 
 Proje koordinasyonu, iş akışları ve kalite kontrol süreçleri `operations/` dizininde tanımlanmıştır. Detaylı navigasyon için: `operations/README.md`
 
 ---
 
-*Bu proje, 42 İstanbul Freelance Kulübü × LÖSEV iş birliği kapsamında, AI-insan iş birliği ile geliştirilmektedir.*
+_Bu proje, 42 İstanbul Freelance Kulübü × LÖSEV iş birliği kapsamında, AI-insan iş birliği ile geliştirilmektedir._

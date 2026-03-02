@@ -1,149 +1,127 @@
-import { prisma } from '../config/database';
+import prisma from '../config/database';
+import { HourStatus, UserRole } from '@prisma/client';
 
-export async function getDashboard(userId: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const yearStart = new Date(now.getFullYear(), 0, 1);
-
-    // Total approved hours
-    const totalHours = await prisma.volunteerHour.aggregate({
-        where: { userId, status: 'APPROVED', deletedAt: null },
-        _sum: { hours: true },
+export class DashboardService {
+  static async getDashboardData(userId: string, userRole: UserRole) {
+    // 1. Total Stats
+    const approvedHoursAgg = await prisma.volunteerHour.aggregate({
+      where: {
+        userId,
+        status: HourStatus.APPROVED,
+      },
+      _sum: {
+        hours: true,
+      },
     });
 
-    // This month's approved hours
-    const monthlyHours = await prisma.volunteerHour.aggregate({
-        where: { userId, status: 'APPROVED', deletedAt: null, date: { gte: monthStart } },
-        _sum: { hours: true },
+    const totalBadges = await prisma.volunteerBadge.count({
+      where: { userId },
     });
 
-    // This year's approved hours
-    const yearlyHours = await prisma.volunteerHour.aggregate({
-        where: { userId, status: 'APPROVED', deletedAt: null, date: { gte: yearStart } },
-        _sum: { hours: true },
+    // 2. Weekly Hours (Last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const weeklyHours = await prisma.volunteerHour.findMany({
+      where: {
+        userId,
+        status: HourStatus.APPROVED,
+        date: { gte: sevenDaysAgo },
+      },
+      select: {
+        hours: true,
+        date: true,
+      },
+      orderBy: { date: 'asc' },
     });
 
-    // Pending hours count
-    const pendingCount = await prisma.volunteerHour.count({
-        where: { userId, status: 'PENDING', deletedAt: null },
-    });
-
-    // Recent badges (last 3)
+    // 3. Recently Earned Badges
     const recentBadges = await prisma.volunteerBadge.findMany({
-        where: { userId },
-        include: { badge: true },
-        orderBy: { earnedAt: 'desc' },
-        take: 3,
+      where: { userId },
+      include: {
+        badge: true,
+      },
+      orderBy: { earnedAt: 'desc' },
+      take: 3,
     });
 
-    // Badge counts
-    const totalBadges = await prisma.badge.count({ where: { isActive: true } });
-    const earnedBadges = await prisma.volunteerBadge.count({ where: { userId } });
-
-    // Upcoming events (next 3)
-    const upcomingEvents = await prisma.event.findMany({
-        where: { isActive: true, deletedAt: null, date: { gte: now } },
-        orderBy: { date: 'asc' },
-        take: 3,
-        include: { _count: { select: { participants: true } } },
-    });
-
-    // User's leaderboard position
-    const userHoursVal = Number(totalHours._sum.hours || 0);
-    let leaderboardRank = 0;
-    if (userHoursVal > 0) {
-        const usersAbove = await prisma.volunteerHour.groupBy({
-            by: ['userId'],
-            where: { status: 'APPROVED', deletedAt: null },
-            _sum: { hours: true },
-            having: { hours: { _sum: { gt: userHoursVal } } },
-        });
-        leaderboardRank = usersAbove.length + 1;
-    }
-
-    // Activity type distribution (for student's own data)
-    const activityDist = await prisma.volunteerHour.groupBy({
-        by: ['activityType'],
-        where: { userId, status: 'APPROVED', deletedAt: null },
-        _sum: { hours: true },
-        _count: true,
-    });
-
-    const result: Record<string, unknown> = {
-        stats: {
-            totalHours: Number(totalHours._sum.hours || 0),
-            monthlyHours: Number(monthlyHours._sum.hours || 0),
-            yearlyHours: Number(yearlyHours._sum.hours || 0),
-            targetHours: 40,
-            pendingCount,
-            earnedBadges,
-            totalBadges,
-            leaderboardRank,
+    // 4. Upcoming Events
+    const upcomingEvents = await prisma.eventParticipant.findMany({
+      where: {
+        userId,
+        event: {
+          startDate: { gte: new Date() },
+          isActive: true,
         },
-        recentBadges: recentBadges.map((vb) => ({
-            id: vb.badge.id,
-            name: vb.badge.name,
-            iconUrl: vb.badge.iconUrl,
-            earnedAt: vb.earnedAt,
-        })),
-        upcomingEvents: upcomingEvents.map((e) => ({
-            id: e.id,
-            title: e.title,
-            date: e.date,
-            location: e.location,
-            participantCount: e._count.participants,
-            capacity: e.capacity,
-        })),
-        activityDistribution: activityDist.map((a) => ({
-            type: a.activityType,
-            count: a._count,
-            hours: Number(a._sum.hours || 0),
-        })),
+      },
+      include: {
+        event: true,
+      },
+      orderBy: {
+        event: { startDate: 'asc' },
+      },
+      take: 2,
+    });
+
+    // 5. Leaderboard Rank (Simple version)
+    const leaderboard = await prisma.volunteerHour.groupBy({
+      by: ['userId'],
+      where: { status: HourStatus.APPROVED },
+      _sum: { hours: true },
+      orderBy: { _sum: { hours: 'desc' } },
+    });
+
+    const rank = leaderboard.findIndex(item => item.userId === userId) + 1;
+
+    // 6. Announcements
+    const announcements = await prisma.announcement.findMany({
+      where: {
+        OR: [
+          { targetRole: null },
+          { targetRole: userRole },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    return {
+      stats: {
+        totalHours: Number(approvedHoursAgg._sum.hours || 0),
+        badgeCount: totalBadges,
+        rank: rank > 0 ? rank : null,
+      },
+      weeklyHours,
+      recentBadges: recentBadges.map(vb => vb.badge),
+      upcomingEvents: upcomingEvents.map(ep => ep.event),
+      announcements,
     };
+  }
 
-    // Teacher/Admin: add school overview
-    if (user && (user.role === 'TEACHER' || user.role === 'ADMIN')) {
-        const schoolFilter = user.role === 'TEACHER' && user.school ? { school: user.school } : {};
-        const allStudents = await prisma.user.findMany({
-            where: { role: 'STUDENT', deletedAt: null, ...schoolFilter },
-            select: { id: true },
-        });
-        const allStudentIds = allStudents.map((s) => s.id);
+  static async getAdminStats() {
+    const [
+      pendingHoursCount, 
+      activeVolunteersCount, 
+      activeEventsCount,
+      totalSystemHoursAgg,
+      totalBadgesAwarded
+    ] = await Promise.all([
+      prisma.volunteerHour.count({ where: { status: HourStatus.PENDING } }),
+      prisma.user.count({ where: { role: UserRole.VOLUNTEER, isActive: true } }),
+      prisma.event.count({ where: { isActive: true, startDate: { gte: new Date() } } }),
+      prisma.volunteerHour.aggregate({
+        where: { status: HourStatus.APPROVED },
+        _sum: { hours: true },
+      }),
+      prisma.volunteerBadge.count(),
+    ]);
 
-        const schoolTotalHours = await prisma.volunteerHour.aggregate({
-            where: { userId: { in: allStudentIds }, status: 'APPROVED', deletedAt: null },
-            _sum: { hours: true },
-        });
-        const schoolPending = await prisma.volunteerHour.count({
-            where: { userId: { in: allStudentIds }, status: 'PENDING', deletedAt: null },
-        });
-
-        result.schoolOverview = {
-            totalStudents: allStudents.length,
-            totalApprovedHours: Number(schoolTotalHours._sum.hours || 0),
-            pendingReviews: schoolPending,
-        };
-    }
-
-    // Admin: add global stats
-    if (user && user.role === 'ADMIN') {
-        const globalHours = await prisma.volunteerHour.aggregate({
-            where: { status: 'APPROVED', deletedAt: null },
-            _sum: { hours: true },
-        });
-        const totalStudents = await prisma.user.count({ where: { role: 'STUDENT', deletedAt: null } });
-        const totalSchools = await prisma.user.groupBy({
-            by: ['school'],
-            where: { role: 'STUDENT', school: { not: null }, deletedAt: null },
-        });
-
-        result.globalStats = {
-            totalVolunteerHours: Number(globalHours._sum.hours || 0),
-            totalStudents,
-            totalSchools: totalSchools.length,
-        };
-    }
-
-    return result;
+    return {
+      pendingHoursCount,
+      activeVolunteersCount,
+      activeEventsCount,
+      totalSystemHours: Number(totalSystemHoursAgg._sum.hours || 0),
+      totalBadgesAwarded,
+    };
+  }
 }

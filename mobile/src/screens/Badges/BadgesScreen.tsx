@@ -1,106 +1,196 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { typography, spacing, borderRadius } from '../../theme';
-import { portalService } from '../../services/portal';
-import type { Badge } from '../../types/portal';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, SafeAreaView, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { BadgeService, Badge } from '../../services/badge.service';
 
-export function BadgesScreen() {
-    const colors = useThemeColors();
-    const { data, isLoading, refetch, isRefetching } = useQuery({
-        queryKey: ['badges'],
-        queryFn: portalService.listBadges,
-    });
+const { width } = Dimensions.get('window');
 
-    const renderItem = ({ item }: { item: Badge }) => (
-        <View style={[styles.card, { backgroundColor: colors.surface, opacity: item.earned ? 1 : 0.5 }]}>
-            <View style={[styles.iconWrap, { backgroundColor: item.earned ? colors.primaryContainer : colors.border + '40' }]}>
-                <Ionicons
-                    name={item.earned ? 'ribbon' : 'ribbon-outline'}
-                    size={32}
-                    color={item.earned ? colors.primary : colors.textTertiary}
-                />
-            </View>
-            <Text style={[typography.subtitle1, { color: colors.text, marginTop: spacing.sm, textAlign: 'center' }]}>
-                {item.name}
-            </Text>
-            <Text style={[typography.caption, { color: colors.textSecondary, textAlign: 'center', marginTop: 2 }]} numberOfLines={2}>
-                {item.description}
-            </Text>
-            {item.earned && (
-                <View style={[styles.earnedBadge, { backgroundColor: '#10B981' + '20' }]}>
-                    <Ionicons name="checkmark-circle" size={12} color="#10B981" />
-                    <Text style={[typography.caption, { color: '#10B981', marginLeft: 2, fontWeight: '600' }]}>Kazanıldı</Text>
-                </View>
-            )}
-            {!item.earned && item.progressPercent !== undefined && (
-                <View style={styles.progressWrap}>
-                    <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                        <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${item.progressPercent}%` }]} />
-                    </View>
-                    <Text style={[typography.caption, { color: colors.textTertiary, marginTop: 2 }]}>%{item.progressPercent}</Text>
-                </View>
-            )}
-        </View>
-    );
+export const BadgesScreen = ({ navigation }: any) => {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [allBadges, setAllBadges] = useState<Badge[]>([]);
+  const [myBadges, setMyBadges] = useState<Badge[]>([]);
 
-    if (isLoading) {
-        return (
-            <View style={[styles.center, { backgroundColor: colors.background }]}>
-                <ActivityIndicator size="large" color={colors.primary} />
-            </View>
-        );
+  const fetchData = async () => {
+    try {
+      const [allRes, myRes] = await Promise.all([
+        BadgeService.getAllBadges(),
+        BadgeService.getMyBadges(),
+      ]);
+      if (allRes.success) setAllBadges(allRes.data);
+      if (myRes.success) setMyBadges(myRes.data);
+    } catch (error) {
+      console.error('Failed to fetch badges', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
 
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  const isEarned = (badgeId: string) => {
+    return myBadges.some(mb => mb.id === badgeId);
+  };
+
+  const renderItem = ({ item }: { item: Badge }) => {
+    const earned = isEarned(item.id);
     return (
-        <FlatList
-            data={data ?? []}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.row}
-            contentContainerStyle={[styles.list, { backgroundColor: colors.background }]}
-            refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
-            ListEmptyComponent={
-                <View style={styles.empty}>
-                    <Ionicons name="ribbon-outline" size={48} color={colors.textTertiary} />
-                    <Text style={[typography.body1, { color: colors.textSecondary, marginTop: spacing.sm }]}>Henüz rozet yok</Text>
-                </View>
-            }
-        />
+      <TouchableOpacity 
+        style={[styles.badgeCard, !earned && styles.lockedCard]}
+        onPress={() => navigation.navigate('BadgeDetail', { badge: item, earned })}
+      >
+        <View style={[styles.iconContainer, !earned && styles.lockedIcon]}>
+          <Text style={styles.badgeIcon}>🎖️</Text>
+        </View>
+        <Text style={styles.badgeName} numberOfLines={1}>{item.name}</Text>
+        <View style={[styles.statusTag, earned ? styles.earnedTag : styles.lockedTag]}>
+          <Text style={styles.statusTagText}>{earned ? 'Kazanıldı' : 'Kilitli'}</Text>
+        </View>
+      </TouchableOpacity>
     );
-}
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>← Geri</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Rozet Vitrini</Text>
+        <View style={{ width: 60 }} />
+      </View>
+
+      {loading && allBadges.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#E05A47" />
+        </View>
+      ) : (
+        <FlatList
+          data={allBadges}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          numColumns={3}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#E05A47"]} tintColor="#E05A47" />}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Henüz rozet tanımlanmamış.</Text>
+            </View>
+          }
+        />
+      )}
+    </SafeAreaView>
+  );
+};
 
 const styles = StyleSheet.create({
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    list: { paddingHorizontal: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.xl, flexGrow: 1 },
-    row: { justifyContent: 'space-between', marginBottom: spacing.sm },
-    card: {
-        width: '48%',
-        padding: spacing.md,
-        borderRadius: borderRadius.lg,
-        alignItems: 'center',
-        minHeight: 160,
-    },
-    iconWrap: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    earnedBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: spacing.xs,
-        paddingVertical: 2,
-        borderRadius: borderRadius.sm,
-        marginTop: spacing.xs,
-    },
-    progressWrap: { width: '100%', marginTop: spacing.xs, alignItems: 'center' },
-    progressBar: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
-    progressFill: { height: '100%', borderRadius: 2 },
-    empty: { alignItems: 'center', marginTop: spacing.xl * 2 },
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF9F6',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  backBtn: {
+    padding: 5,
+  },
+  backBtnText: {
+    color: '#E05A47',
+    fontWeight: '600',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listContent: {
+    padding: 15,
+  },
+  badgeCard: {
+    backgroundColor: '#FFF',
+    width: (width - 60) / 3,
+    padding: 10,
+    margin: 5,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3.84,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  lockedCard: {
+    backgroundColor: '#F9F9F9',
+    opacity: 0.7,
+  },
+  iconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFEBEA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  lockedIcon: {
+    backgroundColor: '#EEE',
+  },
+  badgeIcon: {
+    fontSize: 28,
+  },
+  badgeName: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  statusTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  earnedTag: {
+    backgroundColor: '#4CD96420',
+  },
+  lockedTag: {
+    backgroundColor: '#8E8E9320',
+  },
+  statusTagText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#4CD964',
+  },
+  lockedTagText: {
+    color: '#8E8E93',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#999',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });

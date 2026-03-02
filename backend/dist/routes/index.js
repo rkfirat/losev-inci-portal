@@ -1,0 +1,24 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_routes_1 = __importDefault(require("./auth.routes"));
+const volunteer_routes_1 = __importDefault(require("./volunteer.routes"));
+const dashboard_routes_1 = __importDefault(require("./dashboard.routes"));
+const badge_routes_1 = __importDefault(require("./badge.routes"));
+const event_routes_1 = __importDefault(require("./event.routes"));
+const leaderboard_routes_1 = __importDefault(require("./leaderboard.routes"));
+const coordinator_routes_1 = __importDefault(require("./coordinator.routes"));
+const admin_routes_1 = __importDefault(require("./admin.routes"));
+const router = (0, express_1.Router)();
+router.use('/auth', auth_routes_1.default);
+router.use('/volunteers', volunteer_routes_1.default);
+router.use('/dashboard', dashboard_routes_1.default);
+router.use('/badges', badge_routes_1.default);
+router.use('/events', event_routes_1.default);
+router.use('/leaderboard', leaderboard_routes_1.default);
+router.use('/coordinator', coordinator_routes_1.default);
+router.use('/admin', admin_routes_1.default);
+exports.default = router;

@@ -1,28 +1,61 @@
 import { Request, Response } from 'express';
-import { asyncHandler } from '../utils/asyncHandler';
-import * as eventService from '../services/event.service';
+import eventService from '../services/event.service';
 
-export const listEvents = asyncHandler(async (req: Request, res: Response) => {
-    const result = await eventService.listEvents(req.query as any);
-    res.json({ status: 'success', data: result });
-});
+export class EventController {
+  async getAllEvents(req: Request, res: Response) {
+    try {
+      const events = await eventService.getAllEvents();
+      res.json({ success: true, data: events });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: { message: error.message } });
+    }
+  }
 
-export const getEventDetail = asyncHandler(async (req: Request, res: Response) => {
-    const event = await eventService.getEventDetail(req.params.id as string, req.user!.userId);
-    res.json({ status: 'success', data: event });
-});
+  async getEventById(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user?.id as string | undefined;
+      const event = await eventService.getEventById(id, userId);
+      
+      if (!event) {
+        return res.status(404).json({ success: false, error: { message: 'Event not found' } });
+      }
+      
+      res.json({ success: true, data: event });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: { message: error.message } });
+    }
+  }
 
-export const createEvent = asyncHandler(async (req: Request, res: Response) => {
-    const event = await eventService.createEvent(req.user!.userId, req.body);
-    res.status(201).json({ status: 'success', data: event });
-});
+  async participate(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user.id as string;
+      
+      const participation = await eventService.participate(id, userId);
+      res.json({ success: true, data: participation });
+    } catch (error: any) {
+      if (error.message === 'EVENT_NOT_FOUND') {
+        return res.status(404).json({ success: false, error: { message: 'Event not found' } });
+      }
+      if (error.message === 'EVENT_FULL') {
+        return res.status(400).json({ success: false, error: { message: 'Event is full' } });
+      }
+      res.status(500).json({ success: false, error: { message: error.message } });
+    }
+  }
 
-export const participateEvent = asyncHandler(async (req: Request, res: Response) => {
-    const result = await eventService.participateEvent(req.params.id as string, req.user!.userId);
-    res.json({ status: 'success', data: result });
-});
+  async cancelParticipation(req: Request, res: Response) {
+    try {
+      const id = req.params.id as string;
+      const userId = (req as any).user.id as string;
+      
+      const participation = await eventService.cancelParticipation(id, userId);
+      res.json({ success: true, data: participation });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: { message: error.message } });
+    }
+  }
+}
 
-export const cancelParticipation = asyncHandler(async (req: Request, res: Response) => {
-    const result = await eventService.cancelParticipation(req.params.id as string, req.user!.userId);
-    res.json({ status: 'success', data: result });
-});
+export default new EventController();

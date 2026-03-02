@@ -1,36 +1,49 @@
+# Stage 1: Build
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install openssl for prisma
-RUN apk add --no-cache openssl
-
-# Install dependencies
+# Copy package files
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm install
+# Install dependencies
+RUN npm ci
 
-# Copy source
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy source code
 COPY . .
 
-# Generate Prisma Client and Build
-RUN npx prisma generate
+# Build the application
 RUN npm run build
 
-# Production image
+# Stage 2: Production
 FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+# Install production dependencies only
+RUN npm ci --only=production
+
+# Copy built application and start script from builder
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
+COPY start.sh ./
+RUN chmod +x start.sh
 
+# Set environment variables
+ENV NODE_ENV=production
+
+# Expose port
 EXPOSE 3000
 
-# Start command running migrations first then the server
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+# Run as non-root user
+USER node
+
+# Start command
+CMD ["./start.sh"]

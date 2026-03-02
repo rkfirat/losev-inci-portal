@@ -3,61 +3,48 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: losev-inci-db
+    container_name: losev-postgres
     restart: unless-stopped
-    ports:
-      - '5432:5432'
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+      - /var/run/postgresql
     environment:
       POSTGRES_USER: losev_user
-      POSTGRES_PASSWORD: losev_pass_123
-      POSTGRES_DB: losev_inci
+      POSTGRES_PASSWORD: losev_password
+      POSTGRES_DB: losev_db
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ 'CMD-SHELL', 'pg_isready -U losev_user -d losev_inci' ]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U losev_user -d losev_db"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: losev-inci-redis
+    container_name: losev-redis
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
-      - '6380:6379'
+      - "6379:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes
     healthcheck:
-      test: [ 'CMD', 'redis-cli', 'ping' ]
-      interval: 5s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
       timeout: 5s
       retries: 5
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: losev-inci-backend
-    restart: unless-stopped
-    ports:
-      - '3000:3000'
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DATABASE_URL=postgresql://losev_user:losev_pass_123@postgres:5432/losev_inci?schema=public
-      - REDIS_URL=redis://redis:6379
-      - JWT_PRIVATE_KEY=your-private-key-here
-      - JWT_PUBLIC_KEY=your-public-key-here
-      - JWT_ACCESS_EXPIRATION=1h
-      - JWT_REFRESH_EXPIRATION=14d
-      - ALLOWED_ORIGINS=http://localhost:8081,http://localhost:19006,exp://localhost:8081
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend/prisma:/app/prisma
 
 volumes:
   postgres_data:

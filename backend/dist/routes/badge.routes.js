@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const badge_controller_1 = require("../controllers/badge.controller");
+const auth_middleware_1 = require("../middlewares/auth.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.get('/', badge_controller_1.getAllBadges);
+router.get('/my', badge_controller_1.getUserBadges);
+exports.default = router;

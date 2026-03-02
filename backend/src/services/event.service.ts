@@ -1,130 +1,157 @@
-import { prisma } from '../config/database';
-import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
-import type { CreateEventInput, ListEventsQuery } from '../validators/event';
-import { checkAndAwardBadges } from './volunteer-hour.service';
+import { ParticipationStatus } from '@prisma/client';
+import prisma from '../config/database';
 
-export async function listEvents(query: ListEventsQuery) {
-    const { page, limit, status } = query;
-    const skip = (page - 1) * limit;
-    const now = new Date();
+export class EventService {
+  async getAllEvents() {
+    return prisma.event.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: {
+        startDate: 'asc',
+      },
+      include: {
+        _count: {
+          select: {
+            participants: true,
+          },
+        },
+        participants: {
+          take: 5,
+          select: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
 
-    const where: Record<string, unknown> = { isActive: true, deletedAt: null };
+  async getEventById(id: string, userId?: string) {
+    const event = await prisma.event.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            participants: true,
+          },
+        },
+        participants: {
+          select: {
+            status: true,
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-    if (status === 'upcoming') {
-        where.date = { gte: now };
-    } else if (status === 'past') {
-        where.date = { lt: now };
+    if (!event) return null;
+
+    // Check if current user is participating
+    let userParticipation = null;
+    if (userId) {
+      userParticipation = await prisma.eventParticipant.findUnique({
+        where: {
+          eventId_userId: {
+            eventId: id,
+            userId,
+          },
+        },
+      });
     }
 
-    const [events, total] = await Promise.all([
-        prisma.event.findMany({
-            where,
-            orderBy: { date: status === 'past' ? 'desc' : 'asc' },
-            skip,
-            take: limit,
-            include: {
-                _count: { select: { participants: true } },
-            },
-        }),
-        prisma.event.count({ where }),
-    ]);
-
     return {
-        events: events.map((e) => ({
-            id: e.id,
-            title: e.title,
-            description: e.description,
-            date: e.date,
-            endDate: e.endDate,
-            location: e.location,
-            capacity: e.capacity,
-            participantCount: e._count.participants,
-            isFull: e.capacity ? e._count.participants >= e.capacity : false,
-            createdAt: e.createdAt,
-        })),
-        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      ...event,
+      isUserParticipating: !!userParticipation && userParticipation.status !== 'CANCELLED',
+      userParticipationStatus: userParticipation?.status || null,
     };
-}
+  }
 
-export async function getEventDetail(eventId: string, userId: string) {
-    const event = await prisma.event.findUnique({
+  async participate(eventId: string, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      // Check event exists and has capacity with a lock if possible, 
+      // but standard read within transaction is a good start.
+      const event = await tx.event.findUnique({
         where: { id: eventId },
         include: {
-            _count: { select: { participants: true } },
+          _count: {
+            select: {
+              participants: {
+                where: {
+                  status: 'REGISTERED',
+                },
+              },
+            },
+          },
         },
-    });
+      });
 
-    if (!event || event.deletedAt) throw new NotFoundError('Event not found');
+      if (!event) throw new Error('EVENT_NOT_FOUND');
 
-    const participation = await prisma.eventParticipant.findUnique({
-        where: { eventId_userId: { eventId, userId } },
-    });
+      // Check if user already registered (to avoid double counting in logic)
+      const existing = await tx.eventParticipant.findUnique({
+        where: {
+          eventId_userId: { eventId, userId }
+        }
+      });
 
-    return {
-        id: event.id,
-        title: event.title,
-        description: event.description,
-        date: event.date,
-        endDate: event.endDate,
-        location: event.location,
-        capacity: event.capacity,
-        participantCount: event._count.participants,
-        isFull: event.capacity ? event._count.participants >= event.capacity : false,
-        isParticipating: !!participation,
-        createdAt: event.createdAt,
-    };
-}
+      const isAlreadyRegistered = existing && existing.status === 'REGISTERED';
 
-export async function createEvent(userId: string, input: CreateEventInput) {
-    const event = await prisma.event.create({
-        data: {
-            title: input.title,
-            description: input.description || null,
-            date: new Date(input.date),
-            endDate: input.endDate ? new Date(input.endDate) : null,
-            location: input.location || null,
-            capacity: input.capacity || null,
-            createdBy: userId,
+      if (!isAlreadyRegistered && event.capacity && event._count.participants >= event.capacity) {
+        throw new Error('EVENT_FULL');
+      }
+
+      return tx.eventParticipant.upsert({
+        where: {
+          eventId_userId: {
+            eventId,
+            userId,
+          },
         },
+        update: {
+          status: 'REGISTERED' as ParticipationStatus,
+        },
+        create: {
+          eventId,
+          userId,
+          status: 'REGISTERED' as ParticipationStatus,
+        },
+      });
     });
-    return event;
+  }
+
+  async cancelParticipation(eventId: string, userId: string) {
+    return prisma.eventParticipant.update({
+      where: {
+        eventId_userId: {
+          eventId,
+          userId,
+        },
+      },
+      data: {
+        status: 'CANCELLED' as ParticipationStatus,
+      },
+    });
+  }
+
+  async createEvent(data: any) {
+    return prisma.event.create({
+      data,
+    });
+  }
 }
 
-export async function participateEvent(eventId: string, userId: string) {
-    const event = await prisma.event.findUnique({
-        where: { id: eventId },
-        include: { _count: { select: { participants: true } } },
-    });
-
-    if (!event || event.deletedAt) throw new NotFoundError('Event not found');
-    if (event.date < new Date()) throw new BadRequestError('Cannot join past events');
-    if (event.capacity && event._count.participants >= event.capacity) {
-        throw new BadRequestError('Event is full');
-    }
-
-    const existing = await prisma.eventParticipant.findUnique({
-        where: { eventId_userId: { eventId, userId } },
-    });
-    if (existing) throw new ConflictError('Already participating');
-
-    await prisma.eventParticipant.create({ data: { eventId, userId } });
-    await checkAndAwardBadges(userId);
-
-    return { message: 'Successfully joined the event' };
-}
-
-export async function cancelParticipation(eventId: string, userId: string) {
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
-    if (!event) throw new NotFoundError('Event not found');
-
-    const participation = await prisma.eventParticipant.findUnique({
-        where: { eventId_userId: { eventId, userId } },
-    });
-    if (!participation) throw new NotFoundError('Not participating in this event');
-
-    await prisma.eventParticipant.delete({
-        where: { eventId_userId: { eventId, userId } },
-    });
-
-    return { message: 'Participation cancelled' };
-}
+export default new EventService();

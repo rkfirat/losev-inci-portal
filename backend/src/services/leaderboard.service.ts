@@ -1,96 +1,105 @@
-import { prisma } from '../config/database';
+import redis from '../config/redis';
+import logger from '../utils/logger';
+import prisma from '../config/database';
 
-type Period = 'weekly' | 'monthly' | 'all';
+export class LeaderboardService {
+  private static CACHE_KEY = 'leaderboard:top100';
+  private static TEAM_CACHE_KEY = 'leaderboard:teams';
+  private static CACHE_EXPIRY = 60 * 5; // 5 minutes
 
-export async function getLeaderboard(period: Period = 'monthly', userId?: string) {
-    const now = new Date();
-    let dateFilter: Date | undefined;
+  async getTopVolunteers() {
+    try {
+      if (redis && redis.status === 'ready') {
+        const cachedData = await redis.get(LeaderboardService.CACHE_KEY);
+        if (cachedData) return JSON.parse(cachedData);
+      }
 
-    if (period === 'weekly') {
-        dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    } else if (period === 'monthly') {
-        dateFilter = new Date(now.getFullYear(), now.getMonth(), 1);
+      const leaderboard = await prisma.user.findMany({
+        where: { role: 'VOLUNTEER', isActive: true },
+        select: {
+          id: true, firstName: true, lastName: true, avatarUrl: true, school: true,
+          _count: { select: { volunteerBadges: true } },
+          volunteerHours: { where: { status: 'APPROVED' }, select: { hours: true } },
+        },
+      });
+
+      const mappedLeaderboard = leaderboard
+        .map((user) => {
+          const totalHours = user.volunteerHours.reduce((sum, entry) => sum + Number(entry.hours), 0);
+          return {
+            id: user.id, firstName: user.firstName, lastName: user.lastName,
+            avatarUrl: user.avatarUrl, school: user.school, totalHours,
+            badgeCount: user._count.volunteerBadges,
+          };
+        })
+        .sort((a, b) => b.totalHours - a.totalHours)
+        .slice(0, 100);
+
+      if (redis && redis.status === 'ready') {
+        await redis.set(LeaderboardService.CACHE_KEY, JSON.stringify(mappedLeaderboard), 'EX', LeaderboardService.CACHE_EXPIRY);
+      }
+      return mappedLeaderboard;
+    } catch (error) {
+      logger.error('Error fetching leaderboard:', error);
+      throw error;
     }
+  }
 
-    const whereClause: Record<string, unknown> = {
-        status: 'APPROVED',
-        deletedAt: null,
-    };
-    if (dateFilter) {
-        whereClause.date = { gte: dateFilter };
-    }
+  async getTeamLeaderboard() {
+    try {
+      if (redis && redis.status === 'ready') {
+        const cachedData = await redis.get(LeaderboardService.TEAM_CACHE_KEY);
+        if (cachedData) return JSON.parse(cachedData);
+      }
 
-    const leaderboard = await prisma.volunteerHour.groupBy({
-        by: ['userId'],
-        where: whereClause,
-        _sum: { hours: true },
-        orderBy: { _sum: { hours: 'desc' } },
-        take: 50,
-    });
+      const coalitions = await prisma.coalition.findMany({
+        include: {
+          users: {
+            where: { role: 'VOLUNTEER', isActive: true },
+            select: {
+              volunteerHours: { where: { status: 'APPROVED' }, select: { hours: true } },
+            },
+          },
+        },
+      });
 
-    const userIds = leaderboard.map((e) => e.userId);
-    const users = await prisma.user.findMany({
-        where: { id: { in: userIds } },
-        select: { id: true, firstName: true, lastName: true, avatarUrl: true, school: true },
-    });
+      const mappedTeams = coalitions.map(team => {
+        const totalHours = team.users.reduce((teamSum, user) => {
+          return teamSum + user.volunteerHours.reduce((userSum, entry) => userSum + Number(entry.hours), 0);
+        }, 0);
 
-    const badgeCounts = await prisma.volunteerBadge.groupBy({
-        by: ['userId'],
-        where: { userId: { in: userIds } },
-        _count: true,
-    });
-
-    const userMap = new Map(users.map((u) => [u.id, u]));
-    const badgeMap = new Map(badgeCounts.map((b) => [b.userId, b._count]));
-
-    const entries = leaderboard.map((entry, index) => {
-        const user = userMap.get(entry.userId);
         return {
-            rank: index + 1,
-            userId: entry.userId,
-            firstName: user?.firstName || '',
-            lastName: user?.lastName || '',
-            avatarUrl: user?.avatarUrl || null,
-            school: user?.school || null,
-            totalHours: Number(entry._sum.hours || 0),
-            badgeCount: badgeMap.get(entry.userId) || 0,
+          id: team.id,
+          name: team.name,
+          color: team.color,
+          imageUrl: team.imageUrl,
+          totalHours,
+          memberCount: team.users.length,
         };
-    });
+      }).sort((a, b) => b.totalHours - a.totalHours);
 
-    // Find current user's position if not in top 50
-    let currentUserRank = null;
-    if (userId) {
-        const userEntry = entries.find((e) => e.userId === userId);
-        if (userEntry) {
-            currentUserRank = userEntry;
-        } else {
-            const userTotal = await prisma.volunteerHour.aggregate({
-                where: { ...whereClause, userId },
-                _sum: { hours: true },
-            });
-            const userHours = Number(userTotal._sum.hours || 0);
-            if (userHours > 0) {
-                const aboveCount = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
-                    `SELECT COUNT(DISTINCT user_id) as count FROM volunteer_hours WHERE status = 'APPROVED' AND deleted_at IS NULL ${dateFilter ? `AND date >= '${dateFilter.toISOString()}'` : ''} GROUP BY user_id HAVING SUM(hours) > ${userHours}`,
-                );
-                const rank = Number(aboveCount?.[0]?.count || 0) + 1;
-                const user = await prisma.user.findUnique({
-                    where: { id: userId },
-                    select: { firstName: true, lastName: true, avatarUrl: true },
-                });
-                const badges = await prisma.volunteerBadge.count({ where: { userId } });
-                currentUserRank = {
-                    rank,
-                    userId,
-                    firstName: user?.firstName || '',
-                    lastName: user?.lastName || '',
-                    avatarUrl: user?.avatarUrl || null,
-                    totalHours: userHours,
-                    badgeCount: badges,
-                };
-            }
-        }
+      if (redis && redis.status === 'ready') {
+        await redis.set(LeaderboardService.TEAM_CACHE_KEY, JSON.stringify(mappedTeams), 'EX', LeaderboardService.CACHE_EXPIRY);
+      }
+      return mappedTeams;
+    } catch (error) {
+      logger.error('Error fetching team leaderboard:', error);
+      throw error;
     }
+  }
 
-    return { entries, currentUserRank, period };
+  async getUserRank(userId: string) {
+    const fullLeaderboard = await this.getTopVolunteers();
+    const rank = fullLeaderboard.findIndex((u: any) => u.id === userId) + 1;
+    return rank > 0 ? rank : null;
+  }
+
+  static async invalidateCache() {
+    if (redis && redis.status === 'ready') {
+      await redis.del(LeaderboardService.CACHE_KEY).catch(() => {});
+      await redis.del(LeaderboardService.TEAM_CACHE_KEY).catch(() => {});
+    }
+  }
 }
+
+export default new LeaderboardService();

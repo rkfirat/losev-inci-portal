@@ -1,48 +1,29 @@
-import './global.css';
 import React from 'react';
+import './src/i18n';
+import * as Sentry from "@sentry/react-native";
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 1.0,
+  _experiments: {
+    profilesSampleRate: 1.0,
+  },
+});
+
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
-import { QueryClientProvider } from '@tanstack/react-query';
-import { queryClient } from './src/services/queryClient';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { useIsDarkMode } from './src/hooks/useThemeColors';
-import { lightColors, darkColors } from './src/theme/colors';
+import { ErrorBoundary } from './src/components/common/ErrorBoundary';
 
-const LightNavigationTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    primary: lightColors.primary,
-    background: lightColors.background,
-    card: lightColors.surface,
-    text: lightColors.text,
-    border: lightColors.border,
-    notification: lightColors.error,
-  },
-};
-
-const DarkNavigationTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    primary: darkColors.primary,
-    background: darkColors.background,
-    card: darkColors.surface,
-    text: darkColors.text,
-    border: darkColors.border,
-    notification: darkColors.error,
-  },
-};
-
-export default function App() {
-  const isDark = useIsDarkMode();
-
+function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <NavigationContainer theme={isDark ? DarkNavigationTheme : LightNavigationTheme}>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <StatusBar style="auto" />
         <RootNavigator />
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-      </NavigationContainer>
-    </QueryClientProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
+
+export default Sentry.wrap(App);

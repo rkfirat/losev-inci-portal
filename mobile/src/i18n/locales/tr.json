@@ -1,0 +1,54 @@
+{
+  "common": {
+    "loading": "Yükleniyor...",
+    "error": "Bir hata oluştu",
+    "save": "Kaydet",
+    "cancel": "Vazgeç",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "back": "Geri",
+    "logout": "Çıkış",
+    "search": "Ara...",
+    "all": "Tümü",
+    "success": "Başarılı"
+  },
+  "auth": {
+    "login": "Giriş Yap",
+    "register": "Kayıt Ol",
+    "email": "E-posta",
+    "password": "Şifre",
+    "firstName": "Ad",
+    "lastName": "Soyad",
+    "welcome": "Hoş Geldiniz"
+  },
+  "dashboard": {
+    "greeting": "Merhaba,",
+    "title": "Dashboard",
+    "subtitle": "Gönüllülük faaliyetlerine genel bakış",
+    "stats": {
+      "totalHours": "Toplam Saat",
+      "badges": "Rozet",
+      "rank": "Sıralama",
+      "systemTotalHours": "Sistem Toplam Saat",
+      "systemBadges": "Dağıtılan Rozet",
+      "systemVolunteers": "Sistem Gönüllü"
+    },
+    "weeklyProgress": "Haftalık İlerleme",
+    "recentBadges": "Son Rozetler",
+    "upcomingEvents": "Yaklaşan Etkinlikler",
+    "announcements": "Duyurular",
+    "emptyBadges": "Henüz rozet kazanılmadı.",
+    "emptyEvents": "Yaklaşan etkinliğiniz bulunmuyor.",
+    "adminPanel": "Yönetici Paneli",
+    "pendingApprovals": "Bekleyen Onay",
+    "activeVolunteers": "Aktif Gönüllü",
+    "activeEvents": "Aktif Etkinlik"
+  },
+  "admin": {
+    "onayBekleyenler": "Onay Bekleyenler",
+    "gonulluYonetimi": "Gönüllü Yönetimi",
+    "etkinlikOlustur": "Etkinlik Oluştur",
+    "sistemRaporlari": "Sistem Raporları",
+    "duyuruGonder": "Duyuru Gönder"
+  }
+}

@@ -39,4 +39,22 @@ seed:
 	@echo "🌱 Seeding database..."
 	$(COMPOSE) exec backend sh -c "npx prisma db seed"
 
-.PHONY: all up down clean fclean re logs seed
+# Run backend tests (23 integration tests)
+test-backend:
+	@echo "🧪 Running backend tests..."
+	cd backend && npm test
+
+# Run backend tests with coverage report
+test-backend-coverage:
+	@echo "📊 Backend coverage..."
+	cd backend && npm run test:coverage
+
+# Run mobile tests (4 tests)
+test-mobile:
+	@echo "🧪 Running mobile tests..."
+	cd mobile && npm test
+
+# Run all tests (backend + mobile)
+test: test-backend test-mobile
+
+.PHONY: all up down clean fclean re logs seed test test-backend test-backend-coverage test-mobile

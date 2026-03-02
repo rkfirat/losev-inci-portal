@@ -1,30 +1,22 @@
 import { Router } from 'express';
-import { authRouter } from './auth';
-import { volunteerHoursRouter } from './volunteer-hours';
-import { badgesRouter } from './badges';
-import { eventsRouter } from './events';
-import { leaderboardRouter } from './leaderboard';
-import { dashboardRouter } from './dashboard';
-import { teacherRouter } from './teacher';
+import authRoutes from './auth.routes';
+import volunteerRoutes from './volunteer.routes';
+import dashboardRoutes from './dashboard.routes';
+import badgeRoutes from './badge.routes';
+import eventRoutes from './event.routes';
+import leaderboardRoutes from './leaderboard.routes';
+import coordinatorRoutes from './coordinator.routes';
+import adminRoutes from './admin.routes';
 
 const router = Router();
 
-// Health check
-router.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    version: '0.1.0',
-    timestamp: new Date().toISOString(),
-  });
-});
+router.use('/auth', authRoutes);
+router.use('/volunteers', volunteerRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/badges', badgeRoutes);
+router.use('/events', eventRoutes);
+router.use('/leaderboard', leaderboardRoutes);
+router.use('/coordinator', coordinatorRoutes);
+router.use('/admin', adminRoutes);
 
-// API routes
-router.use('/auth', authRouter);
-router.use('/dashboard', dashboardRouter);
-router.use('/volunteer-hours', volunteerHoursRouter);
-router.use('/badges', badgesRouter);
-router.use('/events', eventsRouter);
-router.use('/leaderboard', leaderboardRouter);
-router.use('/teacher', teacherRouter);
-
-export { router };
+export default router;

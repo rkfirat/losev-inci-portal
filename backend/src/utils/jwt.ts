@@ -1,47 +1,32 @@
-import jwt, { Algorithm, SignOptions, VerifyOptions } from 'jsonwebtoken';
-import { env } from '../config/env';
+import jwt from 'jsonwebtoken';
+import { UserRole } from '@prisma/client';
 
-const ALGORITHM: Algorithm = 'HS256';
-const SECRET = env.JWT_PRIVATE_KEY;
-
-export interface AccessTokenPayload {
-  userId: string;
+export interface TokenPayload {
+  sub: string;
   email: string;
-  role: string;
+  role: UserRole;
 }
 
 export interface RefreshTokenPayload {
-  userId: string;
-  type: 'refresh';
+  sub: string;
+  tokenId: string;
 }
 
-export function generateAccessToken(payload: AccessTokenPayload): string {
-  const options: SignOptions = {
-    algorithm: ALGORITHM,
-    expiresIn: env.JWT_ACCESS_EXPIRATION as unknown as SignOptions['expiresIn'],
-  };
-  return jwt.sign(payload, SECRET, options);
-}
+const getJwtSecret = () => process.env.JWT_SECRET || 'dev_jwt_secret_change_in_production';
+const getRefreshSecret = () => process.env.JWT_REFRESH_SECRET || 'dev_jwt_refresh_secret_change_in_production';
 
-export function generateRefreshToken(userId: string): string {
-  const payload: RefreshTokenPayload = { userId, type: 'refresh' };
-  const options: SignOptions = {
-    algorithm: ALGORITHM,
-    expiresIn: env.JWT_REFRESH_EXPIRATION as unknown as SignOptions['expiresIn'],
-  };
-  return jwt.sign(payload, SECRET, options);
-}
+export const generateAccessToken = (payload: TokenPayload): string => {
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '1h' });
+};
 
-export function verifyAccessToken(token: string): AccessTokenPayload {
-  const options: VerifyOptions = { algorithms: [ALGORITHM] };
-  return jwt.verify(token, SECRET, options) as AccessTokenPayload;
-}
+export const generateRefreshToken = (payload: RefreshTokenPayload): string => {
+  return jwt.sign(payload, getRefreshSecret(), { expiresIn: '14d' });
+};
 
-export function verifyRefreshToken(token: string): RefreshTokenPayload {
-  const options: VerifyOptions = { algorithms: [ALGORITHM] };
-  const payload = jwt.verify(token, SECRET, options) as RefreshTokenPayload;
-  if (payload.type !== 'refresh') {
-    throw new Error('Invalid token type');
-  }
-  return payload;
-}
+export const verifyAccessToken = (token: string): TokenPayload => {
+  return jwt.verify(token, getJwtSecret()) as TokenPayload;
+};
+
+export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
+  return jwt.verify(token, getRefreshSecret()) as RefreshTokenPayload;
+};

@@ -1,358 +1,188 @@
-import crypto from 'crypto';
-import { prisma } from '../config/database';
-import { env } from '../config/env';
-import { logger } from '../config/logger';
-import { hashPassword, comparePassword } from '../utils/password';
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt';
-import { sha256 } from '../utils/hash';
-import {
-  AppError,
-  ConflictError,
-  UnauthorizedError,
-  BadRequestError,
-  NotFoundError,
-} from '../utils/errors';
-import { ErrorCode } from '../types/api';
-import type { RegisterInput, LoginInput, UpdateProfileInput } from '../validators/auth';
+import bcrypt from 'bcryptjs';
+import prisma from '../config/database';
+import { generateAccessToken, generateRefreshToken } from '../utils/jwt';
+import { ConflictError, UnauthorizedError, NotFoundError } from '../errors';
 
-const LOCK_DURATION_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_FAILED_ATTEMPTS = 5;
-const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
+const SALT_ROUNDS = 12;
 
-interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-interface UserResponse {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  avatarUrl: string | null;
-  phone: string | null;
-  tcKimlikNo: string | null;
-  school: string | null;
-  city: string | null;
-  district: string | null;
-  grade: string | null;
-  coordinatorName: string | null;
-  role: string;
-  emailVerified: boolean;
-  createdAt: Date;
-}
-
-function toUserResponse(user: any): UserResponse {
-  return {
-    id: user.id,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    avatarUrl: user.avatarUrl,
-    phone: user.phone,
-    tcKimlikNo: user.tcKimlikNo,
-    school: user.school,
-    city: user.city,
-    district: user.district,
-    grade: user.grade,
-    coordinatorName: user.coordinatorName,
-    role: user.role,
-    emailVerified: user.emailVerified,
-    createdAt: user.createdAt,
-  };
-}
-
-export async function register(
-  input: RegisterInput,
-  userAgent?: string,
-  ipAddress?: string,
-): Promise<{ user: UserResponse; tokens: AuthTokens }> {
-  const existing = await prisma.user.findUnique({ where: { email: input.email } });
-  if (existing) {
-    throw new ConflictError('A user with this email already exists');
+export class AuthService {
+  static async getRandomCoalition() {
+    const coalitions = await prisma.coalition.findMany();
+    if (coalitions.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * coalitions.length);
+    return coalitions[randomIndex].id;
   }
 
-  const passwordHash = await hashPassword(input.password);
+  static async register(data: { email: string; password?: string; firstName?: string; lastName?: string; intraLogin?: string; school?: string; avatarUrl?: string }) {
+    const { email, password, firstName, lastName, intraLogin, school, avatarUrl } = data;
 
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      passwordHash,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      ...(input.phone && { phone: input.phone }),
-      ...(input.tcKimlikNo && { tcKimlikNo: input.tcKimlikNo }),
-      ...(input.school && { school: input.school }),
-      ...(input.city && { city: input.city }),
-      ...(input.district && { district: input.district }),
-      ...(input.grade && { grade: input.grade }),
-      ...(input.coordinatorName && { coordinatorName: input.coordinatorName }),
-    },
-  });
-
-  const tokens = await createSession(user.id, user.email, user.role, userAgent, ipAddress);
-
-  return { user: toUserResponse(user), tokens };
-}
-
-export async function login(
-  input: LoginInput,
-  userAgent?: string,
-  ipAddress?: string,
-): Promise<{ user: UserResponse; tokens: AuthTokens }> {
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
-
-  if (!user || user.deletedAt) {
-    throw new UnauthorizedError('Invalid email or password');
-  }
-
-  if (!user.isActive) {
-    throw new UnauthorizedError('Account is deactivated');
-  }
-
-  // Check account lockout
-  if (user.lockUntil && user.lockUntil > new Date()) {
-    const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
-    throw new AppError(
-      `Account is locked. Try again in ${minutesLeft} minutes`,
-      429,
-      ErrorCode.RATE_LIMIT_EXCEEDED,
-    );
-  }
-
-  const isPasswordValid = await comparePassword(input.password, user.passwordHash);
-
-  if (!isPasswordValid) {
-    const failedAttempts = user.failedLoginAttempts + 1;
-    const updateData: { failedLoginAttempts: number; lockUntil?: Date } = {
-      failedLoginAttempts: failedAttempts,
-    };
-
-    if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-      updateData.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+    let existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      throw new ConflictError('User with this email already exists');
     }
 
-    await prisma.user.update({ where: { id: user.id }, data: updateData });
-    throw new UnauthorizedError('Invalid email or password');
-  }
-
-  // Reset failed attempts on successful login
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { failedLoginAttempts: 0, lockUntil: null, lastLoginAt: new Date() },
-  });
-
-  const tokens = await createSession(user.id, user.email, user.role, userAgent, ipAddress);
-
-  return { user: toUserResponse(user), tokens };
-}
-
-export async function logout(refreshToken: string): Promise<void> {
-  const tokenHash = sha256(refreshToken);
-  const deleted = await prisma.session.deleteMany({ where: { refreshToken: tokenHash } });
-  if (deleted.count === 0) {
-    throw new UnauthorizedError('Invalid session');
-  }
-}
-
-export async function refresh(
-  refreshToken: string,
-  userAgent?: string,
-  ipAddress?: string,
-): Promise<AuthTokens> {
-  let payload;
-  try {
-    payload = verifyRefreshToken(refreshToken);
-  } catch {
-    throw new UnauthorizedError('Invalid or expired refresh token');
-  }
-
-  const tokenHash = sha256(refreshToken);
-  const session = await prisma.session.findFirst({
-    where: { refreshToken: tokenHash, userId: payload.userId },
-    include: { user: true },
-  });
-
-  if (!session || session.expiresAt < new Date()) {
-    if (session) {
-      await prisma.session.delete({ where: { id: session.id } });
+    if (intraLogin) {
+      existingUser = await prisma.user.findUnique({ where: { intraLogin } });
+      if (existingUser) {
+        throw new ConflictError('User with this intra login already exists');
+      }
     }
-    throw new UnauthorizedError('Session expired');
-  }
 
-  const user = session.user;
-  if (!user.isActive || user.deletedAt) {
-    await prisma.session.delete({ where: { id: session.id } });
-    throw new UnauthorizedError('Account is deactivated');
-  }
+    const passwordHash = password ? await bcrypt.hash(password, SALT_ROUNDS) : null;
+    const coalitionId = await this.getRandomCoalition();
 
-  // Delete old session
-  await prisma.session.delete({ where: { id: session.id } });
-
-  // Create new session (token rotation)
-  return createSession(user.id, user.email, user.role, userAgent, ipAddress);
-}
-
-export async function forgotPassword(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  // Always return success to prevent email enumeration
-  if (!user || user.deletedAt || !user.isActive) {
-    return;
-  }
-
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  const resetTokenHash = sha256(resetToken);
-  const resetTokenExp = new Date(Date.now() + RESET_TOKEN_EXPIRY_MS);
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { resetToken: resetTokenHash, resetTokenExp },
-  });
-
-  // TODO: Send reset email with token (plain token goes in email link)
-  if (env.NODE_ENV === 'development') {
-    logger.info(`[DEV] Password reset token for ${email}: ${resetToken}`);
-  }
-}
-
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  const tokenHash = sha256(token);
-  const user = await prisma.user.findFirst({
-    where: {
-      resetToken: tokenHash,
-      resetTokenExp: { gt: new Date() },
-    },
-  });
-
-  if (!user) {
-    throw new BadRequestError('Invalid or expired reset token');
-  }
-
-  const passwordHash = await hashPassword(newPassword);
-
-  // Update password, clear reset token, invalidate all sessions
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { id: user.id },
+    const user = await prisma.user.create({
       data: {
+        email,
         passwordHash,
-        resetToken: null,
-        resetTokenExp: null,
-        failedLoginAttempts: 0,
-        lockUntil: null,
+        firstName,
+        lastName,
+        intraLogin,
+        school,
+        avatarUrl,
+        role: 'VOLUNTEER',
+        coalitionId,
       },
-    }),
-    prisma.session.deleteMany({ where: { userId: user.id } }),
-  ]);
-}
+    });
 
-export async function getMe(userId: string): Promise<UserResponse> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-
-  if (!user || user.deletedAt) {
-    throw new NotFoundError('User not found');
+    return this.createSession(user, { userAgent: 'Initial Registration', ipAddress: '0.0.0.0' });
   }
 
-  return toUserResponse(user);
-}
+  static async login(email: string, password?: string) {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { coalition: true }
+    });
 
-export async function updateProfile(userId: string, input: UpdateProfileInput): Promise<UserResponse> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.deletedAt) {
+      throw new UnauthorizedError('Invalid email or password');
+    }
 
-  if (!user || user.deletedAt) {
-    throw new NotFoundError('User not found');
+    if (password) {
+      if (!user.passwordHash) {
+        throw new UnauthorizedError('Please login with 42 Intra');
+      }
+      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      if (!isPasswordValid) {
+        throw new UnauthorizedError('Invalid email or password');
+      }
+    }
+
+    return user;
   }
 
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      ...(input.firstName !== undefined && { firstName: input.firstName }),
-      ...(input.lastName !== undefined && { lastName: input.lastName }),
-      ...(input.phone !== undefined && { phone: input.phone }),
-      ...(input.tcKimlikNo !== undefined && { tcKimlikNo: input.tcKimlikNo }),
-      ...(input.school !== undefined && { school: input.school }),
-      ...(input.city !== undefined && { city: input.city }),
-      ...(input.district !== undefined && { district: input.district }),
-      ...(input.grade !== undefined && { grade: input.grade }),
-      ...(input.coordinatorName !== undefined && { coordinatorName: input.coordinatorName }),
-    },
-  });
+  static async createSession(user: any, info: { userAgent?: string; ipAddress?: string }) {
+    const accessToken = generateAccessToken({ sub: user.id, email: user.email, role: user.role });
+    const refreshToken = generateRefreshToken({ sub: user.id, tokenId: user.id });
 
-  return toUserResponse(updated);
-}
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        refreshToken,
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        userAgent: info.userAgent,
+        ipAddress: info.ipAddress,
+      }
+    });
 
-// --- Helpers ---
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() }
+    });
 
-async function createSession(
-  userId: string,
-  email: string,
-  role: string,
-  userAgent?: string,
-  ipAddress?: string,
-): Promise<AuthTokens> {
-  const accessToken = generateAccessToken({ userId, email, role });
-  const refreshTokenStr = generateRefreshToken(userId);
-  const refreshTokenHash = sha256(refreshTokenStr);
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        coalition: user.coalition
+      },
+      tokens: { accessToken, refreshToken, expiresIn: 3600 },
+    };
+  }
 
-  const refreshExpiryMs = parseExpiry(env.JWT_REFRESH_EXPIRATION);
+  static async refresh(refreshToken: string) {
+    const session = await prisma.session.findUnique({ where: { refreshToken } });
 
-  await prisma.session.create({
-    data: {
-      userId,
-      refreshToken: refreshTokenHash,
-      userAgent: userAgent || null,
-      ipAddress: ipAddress || null,
-      expiresAt: new Date(Date.now() + refreshExpiryMs),
-    },
-  });
+    if (!session || session.expiresAt < new Date()) {
+      if (session) await prisma.session.delete({ where: { id: session.id } });
+      throw new UnauthorizedError('Invalid or expired refresh token');
+    }
 
-  return { accessToken, refreshToken: refreshTokenStr };
-}
+    const user = await prisma.user.findUnique({ where: { id: session.userId } });
+    if (!user || user.deletedAt) throw new UnauthorizedError('User not found or inactive');
 
-export async function getUsers() {
-  return await prisma.user.findMany({
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      isActive: true,
-      school: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-}
+    const newAccessToken = generateAccessToken({ sub: user.id, email: user.email, role: user.role });
+    const newRefreshToken = generateRefreshToken({ sub: user.id, tokenId: user.id });
 
-export async function updateUser(id: string, data: { isActive?: boolean; role?: 'STUDENT' | 'TEACHER' | 'ADMIN' }) {
-  return await prisma.user.update({
-    where: { id },
-    data,
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      isActive: true,
-    },
-  });
-}
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { refreshToken: newRefreshToken, expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) }
+    });
 
-function parseExpiry(expiry: string): number {
-  const match = expiry.match(/^(\d+)([smhd])$/);
-  if (!match) return 14 * 24 * 60 * 60 * 1000; // default 14 days
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 3600
+    };
+  }
 
-  const value = parseInt(match[1], 10);
-  const unit = match[2];
+  static async getUserProfile(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { coalition: true }
+    });
 
-  switch (unit) {
-    case 's': return value * 1000;
-    case 'm': return value * 60 * 1000;
-    case 'h': return value * 60 * 60 * 1000;
-    case 'd': return value * 24 * 60 * 60 * 1000;
-    default: return 14 * 24 * 60 * 60 * 1000;
+    if (!user) throw new NotFoundError('User not found');
+
+    const { passwordHash, ...userData } = user;
+    return userData;
+  }
+
+  static async updatePushToken(userId: string, pushToken: string) {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken }
+    });
+  }
+
+  static async handle42User(userData: any) {
+    const email = userData.email;
+    const intraLogin = userData.login;
+    const firstName = userData.first_name;
+    const lastName = userData.last_name;
+    const avatarUrl = userData.image?.link;
+    const school = userData.campus?.[0]?.name || '42';
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) user = await prisma.user.findUnique({ where: { intraLogin } });
+
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          intraLogin,
+          school,
+          avatarUrl: user.avatarUrl || avatarUrl,
+        }
+      });
+    } else {
+      const coalitionId = await this.getRandomCoalition();
+      user = await prisma.user.create({
+        data: {
+          email,
+          intraLogin,
+          school,
+          firstName,
+          lastName,
+          avatarUrl,
+          role: 'VOLUNTEER',
+          coalitionId,
+        }
+      });
+    }
+    return user;
   }
 }

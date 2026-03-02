@@ -1,0 +1,54 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "logout": "Logout",
+    "search": "Search...",
+    "all": "All",
+    "success": "Success"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "email": "Email",
+    "password": "Password",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "welcome": "Welcome"
+  },
+  "dashboard": {
+    "greeting": "Hello,",
+    "title": "Dashboard",
+    "subtitle": "Overview of volunteer activities",
+    "stats": {
+      "totalHours": "Total Hours",
+      "badges": "Badges",
+      "rank": "Rank",
+      "systemTotalHours": "System Total Hours",
+      "systemBadges": "Badges Awarded",
+      "systemVolunteers": "System Volunteers"
+    },
+    "weeklyProgress": "Weekly Progress",
+    "recentBadges": "Recent Badges",
+    "upcomingEvents": "Upcoming Events",
+    "announcements": "Announcements",
+    "emptyBadges": "No badges earned yet.",
+    "emptyEvents": "No upcoming events.",
+    "adminPanel": "Admin Panel",
+    "pendingApprovals": "Pending Approval",
+    "activeVolunteers": "Active Volunteers",
+    "activeEvents": "Active Events"
+  },
+  "admin": {
+    "onayBekleyenler": "Pending Approvals",
+    "gonulluYonetimi": "Volunteer Management",
+    "etkinlikOlustur": "Create Event",
+    "sistemRaporlari": "System Reports",
+    "duyuruGonder": "Send Announcement"
+  }
+}

@@ -4,3 +4,11 @@ node_modules/
 .DS_Store
 *.log
 .vscode/
+.agents/
+.gemini/
+.logs/
+auto.sh
+operations/
+context/
+*.md
+!README.md

@@ -1,140 +1,150 @@
-import { Request, Response } from 'express';
-import * as authService from '../services/auth.service';
-import { asyncHandler } from '../utils/asyncHandler';
-import { ApiResponse } from '../types/api';
+import { Request, Response, NextFunction } from 'express';
+import { AuthService } from '../services/auth.service';
+import { UnauthorizedError } from '../errors';
+import { AuthRequest } from '../middlewares/auth.middleware';
 
-export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password, firstName, lastName, phone, tcKimlikNo, school, city, district, grade, coordinatorName } = req.body;
-  const userAgent = req.headers['user-agent'];
-  const ipAddress = req.ip;
+export const register = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await AuthService.register(req.body);
+    res.status(201).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-  const result = await authService.register(
-    { email, password, firstName, lastName, phone, tcKimlikNo, school, city, district, grade, coordinatorName },
-    userAgent,
-    ipAddress,
-  );
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password } = req.body;
+    const user = await AuthService.login(email, password);
+    const result = await AuthService.createSession(user, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
 
-  const response: ApiResponse = {
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const refresh = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { refreshToken } = req.body;
+    const result = await AuthService.refresh(refreshToken);
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const me = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) throw new UnauthorizedError('Unauthorized');
+
+    const userData = await AuthService.getUserProfile(userId);
+
+    res.status(200).json({
+      success: true,
+      data: userData
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updatePushToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.sub;
+    const { pushToken } = req.body;
+
+    if (!userId) throw new UnauthorizedError('Unauthorized');
+
+    await AuthService.updatePushToken(userId, pushToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'Push token updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const get42AuthUrl = (req: Request, res: Response) => {
+  const clientId = process.env.INTRA_CLIENT_ID;
+  const redirectUri = encodeURIComponent(process.env.INTRA_REDIRECT_URI || 'http://localhost:3000/api/v1/auth/42/callback');
+  
+  const authUrl = `https://api.intra.42.fr/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=public`;
+  
+  res.status(200).json({
     success: true,
-    data: result,
-    message: 'Registration successful',
-  };
+    data: { authUrl }
+  });
+};
 
-  res.status(201).json(response);
-});
+export const handle42Callback = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code } = req.query;
+    if (!code) throw new UnauthorizedError('Code not provided');
 
-export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-  const userAgent = req.headers['user-agent'];
-  const ipAddress = req.ip;
+    const tokenResponse = await fetch('https://api.intra.42.fr/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: process.env.INTRA_CLIENT_ID,
+        client_secret: process.env.INTRA_CLIENT_SECRET,
+        code,
+        redirect_uri: process.env.INTRA_REDIRECT_URI || 'http://localhost:3000/api/v1/auth/42/callback',
+      }),
+    });
 
-  const result = await authService.login({ email, password }, userAgent, ipAddress);
+    const tokenData = await tokenResponse.json();
+    if (tokenData.error) throw new UnauthorizedError(tokenData.error_description || 'Failed to exchange code');
 
-  const response: ApiResponse = {
-    success: true,
-    data: result,
-    message: 'Login successful',
-  };
+    const userResponse = await fetch('https://api.intra.42.fr/v2/me', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
 
-  res.json(response);
-});
+    const userData = await userResponse.json();
+    const user = await AuthService.handle42User(userData);
 
-export const logout = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
-  await authService.logout(refreshToken);
+    const result = await AuthService.createSession(user, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
 
-  const response: ApiResponse = {
-    success: true,
-    message: 'Logged out successfully',
-  };
+    const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT || 'losev-inci-portal://auth/success';
+    res.redirect(`${successRedirect}?accessToken=${result.tokens.accessToken}&refreshToken=${result.tokens.refreshToken}&userId=${user.id}`);
 
-  res.json(response);
-});
+  } catch (error) {
+    next(error);
+  }
+};
 
-export const refresh = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
-  const userAgent = req.headers['user-agent'];
-  const ipAddress = req.ip;
+import prisma from '../config/database';
 
-  const tokens = await authService.refresh(refreshToken, userAgent, ipAddress);
-
-  const response: ApiResponse = {
-    success: true,
-    data: tokens,
-  };
-
-  res.json(response);
-});
-
-export const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
-  const { email } = req.body;
-  await authService.forgotPassword(email);
-
-  const response: ApiResponse = {
-    success: true,
-    message: 'If an account with that email exists, a password reset link has been sent',
-  };
-
-  res.json(response);
-});
-
-export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
-  const { token, password } = req.body;
-  await authService.resetPassword(token, password);
-
-  const response: ApiResponse = {
-    success: true,
-    message: 'Password reset successful',
-  };
-
-  res.json(response);
-});
-
-export const getMe = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user!.userId;
-  const user = await authService.getMe(userId);
-
-  const response: ApiResponse = {
-    success: true,
-    data: user,
-  };
-
-  res.json(response);
-});
-
-export const updateProfile = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user!.userId;
-  const user = await authService.updateProfile(userId, req.body);
-
-  const response: ApiResponse = {
-    success: true,
-    data: user,
-    message: 'Profile updated successfully',
-  };
-
-  res.json(response);
-});
-
-export const getUsers = asyncHandler(async (req: Request, res: Response) => {
-  const users = await authService.getUsers();
-
-  const response: ApiResponse = {
-    success: true,
-    data: users,
-  };
-
-  res.json(response);
-});
-
-export const updateUser = asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  const user = await authService.updateUser(id, req.body);
-
-  const response: ApiResponse = {
-    success: true,
-    data: user,
-    message: 'User updated successfully',
-  };
-
-  res.json(response);
-});
+export const logout = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+       if (req.user?.sub) {
+          await prisma.session.deleteMany({ where: { userId: req.user.sub } });
+       }
+    }
+    res.status(200).json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    next(error);
+  }
+};

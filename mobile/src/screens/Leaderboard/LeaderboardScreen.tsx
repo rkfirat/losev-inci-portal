@@ -1,153 +1,367 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { typography, spacing, borderRadius } from '../../theme';
-import { portalService } from '../../services/portal';
-import { useAuthStore } from '../../store/authStore';
-import type { LeaderboardEntry } from '../../types/portal';
+import React, { useEffect, useState } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  ActivityIndicator, 
+  RefreshControl, 
+  Image 
+} from 'react-native';
+import { LeaderboardService, LeaderboardUser } from '../../services/leaderboard.service';
+import { AppShell } from '../../components/layout/AppShell';
+import { ResponsiveContainer } from '../../components/layout/ResponsiveContainer';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
-const PERIOD_OPTIONS = [
-    { key: 'weekly', label: 'Haftalık' },
-    { key: 'monthly', label: 'Aylık' },
-    { key: 'yearly', label: 'Yıllık' },
-    { key: 'all', label: 'Tüm Zamanlar' },
-];
+export const LeaderboardScreen = ({ navigation }: any) => {
+  const { isDesktop } = useBreakpoint();
+  const [volunteers, setVolunteers] = useState<LeaderboardUser[]>([]);
+  const [myRank, setMyRank] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-export function LeaderboardScreen() {
-    const colors = useThemeColors();
-    const [period, setPeriod] = useState('monthly');
-    const currentUserId = useAuthStore((s) => s.user?.id);
+  const fetchLeaderboard = async () => {
+    try {
+      const res = await LeaderboardService.getLeaderboard();
+      if (res.success) {
+        setVolunteers(res.data.volunteers);
+        setMyRank(res.data.myRank);
+      }
+    } catch (error) {
+      console.error('Failed to fetch leaderboard', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-    const { data, isLoading, refetch, isRefetching } = useQuery({
-        queryKey: ['leaderboard', period],
-        queryFn: () => portalService.getLeaderboard(period),
-    });
+  useEffect(() => {
+    fetchLeaderboard();
+  }, []);
 
-    const getMedalIcon = (rank: number): string => {
-        if (rank === 1) return '🥇';
-        if (rank === 2) return '🥈';
-        if (rank === 3) return '🥉';
-        return `${rank}`;
-    };
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchLeaderboard();
+  };
 
-    const renderItem = ({ item, index }: { item: LeaderboardEntry; index: number }) => {
-        const rank = index + 1;
-        const isMe = item.userId === currentUserId;
-
-        return (
-            <View style={[
-                styles.row,
-                { backgroundColor: isMe ? colors.primary + '10' : colors.surface },
-                isMe && { borderWidth: 1.5, borderColor: colors.primary },
-                rank <= 3 && styles.topRow,
-            ]}>
-                <View style={[styles.rankCircle, rank <= 3 && { backgroundColor: rank === 1 ? '#FCD34D' : rank === 2 ? '#CBD5E1' : '#F59E0B' }]}>
-                    <Text style={[styles.rankText, rank <= 3 && { fontSize: 16 }]}>
-                        {getMedalIcon(rank)}
-                    </Text>
-                </View>
-                <View style={styles.userInfo}>
-                    <Text style={[typography.subtitle1, { color: colors.text }]} numberOfLines={1}>
-                        {item.firstName} {item.lastName}
-                        {isMe && <Text style={{ color: colors.primary, fontWeight: '700' }}> (Ben)</Text>}
-                    </Text>
-                    {item.school && (
-                        <Text style={[typography.caption, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {item.school}
-                        </Text>
-                    )}
-                </View>
-                <View style={styles.hoursCol}>
-                    <Text style={[styles.hoursValue, { color: colors.primary }]}>{item.totalHours ?? 0}</Text>
-                    <Text style={[typography.caption, { color: colors.textSecondary }]}>saat</Text>
-                </View>
-            </View>
-        );
-    };
+  const renderPodium = () => {
+    const top3 = volunteers.slice(0, 3);
+    if (top3.length === 0) return null;
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
-            {/* Period Filters */}
-            <View style={styles.filterRow}>
-                {PERIOD_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                        key={opt.key}
-                        style={[styles.filterChip, period === opt.key && { backgroundColor: colors.primary }]}
-                        onPress={() => setPeriod(opt.key)}
-                    >
-                        <Text style={[typography.caption, { color: period === opt.key ? '#fff' : colors.textSecondary, fontWeight: '600' }]}>
-                            {opt.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+      <View style={styles.podiumContainer}>
+        {/* 2nd Place */}
+        {top3[1] && (
+          <View style={[styles.podiumItem, styles.podium2]}>
+            <View style={styles.podiumAvatarContainer}>
+              <View style={[styles.podiumAvatar, { borderColor: '#C0C0C0' }]}>
+                <Text style={styles.podiumAvatarText}>{top3[1].firstName[0]}</Text>
+              </View>
+              <View style={[styles.rankBadge, { backgroundColor: '#C0C0C0' }]}>
+                <Text style={styles.rankBadgeText}>2</Text>
+              </View>
             </View>
+            <Text style={styles.podiumName} numberOfLines={1}>{top3[1].firstName}</Text>
+            <Text style={styles.podiumHours}>{top3[1].totalHours} Saat</Text>
+          </View>
+        )}
 
-            {/* Current user rank banner */}
-            {data?.currentUserRank && (
-                <View style={[styles.myRank, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="trophy" size={20} color="#FCD34D" />
-                    <Text style={[typography.body1, { color: '#fff', marginLeft: 8 }]}>
-                        Sıralamanız: <Text style={{ fontWeight: '800' }}>#{data.currentUserRank.rank ?? '-'}</Text>
-                        {'  •  '}
-                        {data.currentUserRank.totalHours ?? 0} saat
-                    </Text>
-                </View>
-            )}
+        {/* 1st Place */}
+        {top3[0] && (
+          <View style={[styles.podiumItem, styles.podium1]}>
+            <View style={styles.podiumAvatarContainer}>
+              <View style={[styles.podiumAvatar, { borderColor: '#FFD700', width: 80, height: 80, borderRadius: 40 }]}>
+                <Text style={[styles.podiumAvatarText, { fontSize: 32 }]}>{top3[0].firstName[0]}</Text>
+              </View>
+              <View style={[styles.rankBadge, { backgroundColor: '#FFD700', top: -5 }]}>
+                <Text style={styles.rankBadgeText}>1</Text>
+              </View>
+            </View>
+            <Text style={[styles.podiumName, { fontWeight: 'bold' }]} numberOfLines={1}>{top3[0].firstName}</Text>
+            <Text style={[styles.podiumHours, { color: '#E05A47', fontWeight: 'bold' }]}>{top3[0].totalHours} Saat</Text>
+          </View>
+        )}
 
-            {isLoading ? (
-                <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.xl }} />
-            ) : (
-                <FlatList
-                    data={data?.entries ?? []}
-                    renderItem={renderItem}
-                    keyExtractor={(item) => item.userId}
-                    contentContainerStyle={styles.list}
-                    refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}
-                    ListEmptyComponent={
-                        <View style={styles.empty}>
-                            <Ionicons name="trophy-outline" size={48} color={colors.textTertiary} />
-                            <Text style={[typography.body1, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-                                Henüz sıralama verisi yok
-                            </Text>
-                        </View>
-                    }
-                />
-            )}
-        </View>
+        {/* 3rd Place */}
+        {top3[2] && (
+          <View style={[styles.podiumItem, styles.podium3]}>
+            <View style={styles.podiumAvatarContainer}>
+              <View style={[styles.podiumAvatar, { borderColor: '#CD7F32' }]}>
+                <Text style={styles.podiumAvatarText}>{top3[2].firstName[0]}</Text>
+              </View>
+              <View style={[styles.rankBadge, { backgroundColor: '#CD7F32' }]}>
+                <Text style={styles.rankBadgeText}>3</Text>
+              </View>
+            </View>
+            <Text style={styles.podiumName} numberOfLines={1}>{top3[2].firstName}</Text>
+            <Text style={styles.podiumHours}>{top3[2].totalHours} Saat</Text>
+          </View>
+        )}
+      </View>
     );
-}
+  };
+
+  const renderUserRow = ({ item, index }: { item: LeaderboardUser, index: number }) => {
+    // Skip top 3 as they are in the podium
+    if (index < 3) return null;
+
+    return (
+      <View style={styles.userRow}>
+        <Text style={styles.userRank}>{index + 1}</Text>
+        <View style={styles.userAvatar}>
+          <Text style={styles.userAvatarText}>{item.firstName[0]}</Text>
+        </View>
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
+          <Text style={styles.userSchool}>{item.school || '42 Istanbul'}</Text>
+        </View>
+        <View style={styles.userStats}>
+          <Text style={styles.userHours}>{item.totalHours} <Text style={styles.hourLabel}>s</Text></Text>
+          <Text style={styles.userBadges}>🎖️ {item.badgeCount}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <AppShell activeRoute="Leaderboard" navigation={navigation}>
+      <ResponsiveContainer>
+        <View style={styles.header}>
+          <Text style={styles.pageTitle}>Sıralama</Text>
+          <Text style={styles.subtitle}>En aktif gönüllülerimiz arasındasın!</Text>
+        </View>
+
+        {loading && volunteers.length === 0 ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#E05A47" />
+          </View>
+        ) : (
+          <View style={isDesktop ? styles.desktopLayout : styles.mobileLayout}>
+            {/* My Rank Info */}
+            {myRank && (
+              <View style={styles.myRankCard}>
+                <Text style={styles.myRankLabel}>Senin Sıralaman</Text>
+                <Text style={styles.myRankValue}>#{myRank}</Text>
+              </View>
+            )}
+
+            {renderPodium()}
+
+            <View style={[styles.listCard, isDesktop && styles.desktopListCard]}>
+              <FlatList
+                data={volunteers}
+                keyExtractor={(item) => item.id}
+                renderItem={renderUserRow}
+                contentContainerStyle={styles.listContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#E05A47"]} tintColor="#E05A47" />}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Henüz kimse sıralamaya girmemiş.</Text>
+                  </View>
+                }
+              />
+            </View>
+          </View>
+        )}
+      </ResponsiveContainer>
+    </AppShell>
+  );
+};
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    filterRow: { flexDirection: 'row', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-    filterChip: {
-        paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
-        borderRadius: borderRadius.md, marginRight: spacing.xs, backgroundColor: 'transparent',
-    },
-    myRank: {
-        flexDirection: 'row', alignItems: 'center',
-        marginHorizontal: spacing.md, marginBottom: spacing.sm,
-        padding: spacing.md, borderRadius: borderRadius.lg,
-    },
-    list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
-    row: {
-        flexDirection: 'row', alignItems: 'center',
-        padding: spacing.md, borderRadius: borderRadius.lg, marginBottom: spacing.xs,
-    },
-    topRow: {
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
-    },
-    rankCircle: {
-        width: 36, height: 36, borderRadius: 18,
-        backgroundColor: '#F3F4F6',
-        justifyContent: 'center', alignItems: 'center',
-    },
-    rankText: { fontSize: 14, fontWeight: '800', color: '#374151' },
-    userInfo: { flex: 1, marginLeft: spacing.sm },
-    hoursCol: { alignItems: 'flex-end' },
-    hoursValue: { fontSize: 18, fontWeight: '800' },
-    empty: { alignItems: 'center', marginTop: spacing.xl * 2 },
+  header: {
+    marginBottom: 30,
+  },
+  pageTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4,
+  },
+  center: {
+    padding: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  desktopLayout: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  mobileLayout: {
+    width: '100%',
+  },
+  myRankCard: {
+    backgroundColor: '#E05A47',
+    padding: 20,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 30,
+    width: '100%',
+    maxWidth: 600,
+  },
+  myRankLabel: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  myRankValue: {
+    color: '#FFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  podiumContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    height: 220,
+    marginBottom: 40,
+    width: '100%',
+  },
+  podiumItem: {
+    alignItems: 'center',
+    width: 100,
+  },
+  podium1: {
+    zIndex: 2,
+    marginHorizontal: -10,
+  },
+  podium2: {
+    zIndex: 1,
+  },
+  podium3: {
+    zIndex: 1,
+  },
+  podiumAvatarContainer: {
+    position: 'relative',
+    marginBottom: 10,
+  },
+  podiumAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  podiumAvatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  rankBadge: {
+    position: 'absolute',
+    top: -10,
+    right: -5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  rankBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  podiumName: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 2,
+  },
+  podiumHours: {
+    fontSize: 12,
+    color: '#888',
+  },
+  listCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 800,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  desktopListCard: {
+    marginBottom: 40,
+  },
+  listContent: {
+    padding: 10,
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8F9FA',
+  },
+  userRank: {
+    width: 30,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#888',
+  },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFEBEA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  userAvatarText: {
+    color: '#E05A47',
+    fontWeight: 'bold',
+  },
+  userInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  userSchool: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  userStats: {
+    alignItems: 'flex-end',
+  },
+  userHours: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  hourLabel: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: 'normal',
+  },
+  userBadges: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#999',
+    fontSize: 16,
+    fontStyle: 'italic',
+  }
 });
