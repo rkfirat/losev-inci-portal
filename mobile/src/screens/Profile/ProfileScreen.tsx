@@ -18,6 +18,7 @@ import { AuthService } from '../../services/auth.service';
 import { AppShell } from '../../components/layout/AppShell';
 import { ResponsiveContainer } from '../../components/layout/ResponsiveContainer';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { Directory, File, Paths } from 'expo-file-system/next';
 
 export const ProfileScreen = ({ navigation }: any) => {
   const { user } = useAuthStore();
@@ -77,11 +78,11 @@ export const ProfileScreen = ({ navigation }: any) => {
         });
 
         const filename = `sertifika_${user?.firstName}_${user?.lastName}.pdf`;
-        const fileUri = `${FileSystem.documentDirectory}${filename}`;
+        const dir = new Directory(Paths.document.uri || '');
+        const fileUri = dir.uri + filename;
+        const file = new File(fileUri);
         
-        await FileSystem.writeAsStringAsync(fileUri, base64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        await file.write(base64);
 
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(fileUri);
